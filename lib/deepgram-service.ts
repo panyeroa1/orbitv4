@@ -45,9 +45,15 @@ export class DeepgramService {
 
     try {
       const response = await fetch('/api/deepgram/token');
-      const { key } = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Deepgram token: ${response.status} ${response.statusText}`);
+      }
 
-      if (!key) throw new Error('No Deepgram API key found');
+      const data = await response.json();
+      const key = data.key;
+
+      if (!key) throw new Error('No Deepgram API key returned from server (check .env.local)');
 
       // 2. Open WebSocket
       // Updated with user-requested parameters: language detection, entities, sentiment, etc.
@@ -68,16 +74,27 @@ export class DeepgramService {
       });
 
       const url = `wss://api.deepgram.com/v1/listen?${queryParams.toString()}`;
+      console.log('Connecting to Deepgram WebSocket...', url);
       this.socket = new WebSocket(url, ['token', key]);
 
       this.socket.onopen = () => {
         console.log('🟢 Deepgram WebSocket connected');
         this.isConnected = true;
-        this.startAudioProcessing(deviceId);
+        this.startAudioProcessing(deviceId).catch(err => {
+            console.error('Audio processing failed:', err);
+            this.emitError('Audio Error: ' + err.message);
+        });
       };
 
       this.socket.onmessage = (message) => {
         const received = JSON.parse(message.data);
+        
+        if (received.error) {
+            console.error('Deepgram received error:', received.error);
+            this.emitError(`API Error: ${received.error}`);
+            return;
+        }
+
         const alt = received.channel?.alternatives?.[0];
         const transcript = alt?.transcript;
         
@@ -92,21 +109,34 @@ export class DeepgramService {
         }
       };
 
-      this.socket.onclose = () => {
-        console.log('🔴 Deepgram WebSocket closed');
+      this.socket.onclose = (event) => {
+        console.log('🔴 Deepgram WebSocket closed', event.code, event.reason);
         this.isConnected = false;
+        
+        // Treat normal closures differently if needed, but for now report everything that isn't clean
+        if (event.code !== 1000) {
+            let msg = `Connection closed (${event.code})`;
+            if (event.code === 4001) msg = 'Authentication Failed (Check API Key)';
+            if (event.code === 4000) msg = 'Bad Request format';
+            if (event.reason) msg += `: ${event.reason}`;
+            this.emitError(msg);
+        }
+        
         this.stop();
       };
 
       this.socket.onerror = (error) => {
         console.error('Deepgram WebSocket error:', error);
+        this.emitError('Connection Error');
       };
 
     } catch (error: any) {
       console.error('Failed to start Deepgram service:', error);
-      if (error.message.includes('API key')) {
-        throw new Error('Invalid or missing API Key');
+      let errMsg = error.message || 'Unknown error starting service';
+      if (errMsg.includes('API key')) {
+        errMsg = 'Invalid or missing API Key';
       }
+      this.emitError(errMsg);
       throw error;
     }
   }
@@ -236,9 +266,23 @@ export class DeepgramService {
       this.listeners = this.listeners.filter(cb => cb !== callback);
     };
   }
+  
+  // Error handling
+  private errorListeners: ((error: string) => void)[] = [];
+  
+  onError(callback: (error: string) => void): () => void {
+    this.errorListeners.push(callback);
+    return () => {
+        this.errorListeners = this.errorListeners.filter(cb => cb !== callback);
+    };
+  }
 
   private emit(caption: DeepgramCaption) {
     this.listeners.forEach(cb => cb(caption));
+  }
+  
+  private emitError(error: string) {
+    this.errorListeners.forEach(cb => cb(error));
   }
 
   isActive() {

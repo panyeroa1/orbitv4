@@ -59,6 +59,7 @@ declare global {
 export class WebSpeechService {
   private recognition: SpeechRecognition | null = null;
   private listeners: CaptionCallback[] = [];
+  private errorListeners: ((error: string) => void)[] = [];
   private isListening = false;
 
   constructor() {
@@ -83,6 +84,11 @@ export class WebSpeechService {
 
         this.recognition.onerror = (event) => {
           console.error('Web Speech API error:', event.error);
+          let msg = `Web Speech Error: ${event.error}`;
+          if (event.error === 'not-allowed') msg = 'Microphone access denied. Please allow in settings.';
+          if (event.error === 'network') msg = 'Network error occurred.';
+          if (event.error === 'no-speech') return; // Ignore no-speech, it's just silence
+          this.emitError(msg);
         };
 
         this.recognition.onend = () => {
@@ -97,12 +103,17 @@ export class WebSpeechService {
         };
       } else {
         console.warn('Web Speech API not supported in this browser.');
+        // We can't emit yet because no listeners bound, but we can log.
+        // The start() method should also check this.
       }
     }
   }
 
   start() {
-    if (!this.recognition) return;
+    if (!this.recognition) {
+        this.emitError('Your browser does not support Web Speech API. Try Chrome or Safari.');
+        return;
+    }
     if (this.isListening) return;
 
     try {
@@ -130,6 +141,17 @@ export class WebSpeechService {
 
   private emit(caption: WebSpeechCaption) {
     this.listeners.forEach(cb => cb(caption));
+  }
+
+  onError(callback: (error: string) => void): () => void {
+    this.errorListeners.push(callback);
+    return () => {
+      this.errorListeners = this.errorListeners.filter(cb => cb !== callback);
+    };
+  }
+
+  private emitError(error: string) {
+    this.errorListeners.forEach(cb => cb(error));
   }
 }
 
