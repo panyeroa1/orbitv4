@@ -4,7 +4,7 @@
 
 export interface DeepgramCaption {
   text: string;
-  speaker: string;
+  speaker: number | string; // Changed to support speaker index
   timestamp: number;
   isFinal: boolean;
 }
@@ -26,7 +26,19 @@ export class DeepgramService {
 
   constructor() {}
 
-  async start(): Promise<void> {
+  async getAudioDevices(): Promise<MediaDeviceInfo[]> {
+    try {
+      // Request permission first to get labels
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices.filter(device => device.kind === 'audioinput');
+    } catch (error) {
+      console.error('Error listing audio devices:', error);
+      return [];
+    }
+  }
+
+  async start(deviceId?: string): Promise<void> {
     if (this.isConnected) return;
 
     try {
@@ -37,27 +49,31 @@ export class DeepgramService {
       if (!key) throw new Error('No Deepgram API key found');
 
       // 2. Open WebSocket
-      const url = `wss://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&interim_results=true&endpointing=300`;
+      // Added diarize=true and filler_words=false for cleaner output
+      const url = `wss://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&interim_results=true&diarize=true&endpointing=300`;
       this.socket = new WebSocket(url, ['token', key]);
 
       this.socket.onopen = () => {
         console.log('🟢 Deepgram WebSocket connected');
         this.isConnected = true;
-        this.startAudioProcessing(); // Renamed from startMicrophone
+        this.startAudioProcessing(deviceId);
       };
 
       this.socket.onmessage = (message) => {
         const received = JSON.parse(message.data);
-        const transcript = received.channel?.alternatives?.[0]?.transcript;
+        const alt = received.channel?.alternatives?.[0];
+        const transcript = alt?.transcript;
         
         if (transcript && transcript.length > 0) {
-          const isFinal = received.is_final;
+          // Attempt to get speaker from words if available (Diarization)
+          // Default to 0 if not found
+          const speaker = alt.words?.[0]?.speaker ?? 0;
           
           this.emit({
             text: transcript,
-            speaker: 'You', 
+            speaker: `Speaker ${speaker}`, 
             timestamp: Date.now(),
-            isFinal
+            isFinal: received.is_final
           });
         }
       };
@@ -78,14 +94,18 @@ export class DeepgramService {
     }
   }
 
-  private async startAudioProcessing() {
+  private async startAudioProcessing(deviceId?: string) {
     try {
       // Initialize Audio Context
       this.audioContext = new AudioContext();
       this.destination = this.audioContext.createMediaStreamDestination();
 
-      // Get Microphone Stream
-      this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Get Microphone Stream with specific device if selected
+      const constraints: MediaStreamConstraints = {
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true
+      };
+
+      this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
       this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
       
       // Connect Mic to Destination
@@ -106,23 +126,13 @@ export class DeepgramService {
       return;
     }
 
-    // Check if stream has audio tracks
     const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length === 0) {
-      console.warn('Screen share stream has no audio tracks.');
-      return;
-    }
+    if (audioTracks.length === 0) return;
 
     try {
       console.log('🖥️ Adding screen share audio to transcription mix');
-      
-      // Create source from screen share stream
-      // Important: Clone the stream to avoid interfering with the original stream (e.g. storage/display)
       this.screenSource = this.audioContext.createMediaStreamSource(stream);
-      
-      // Connect Screen Audio to Destination
       this.screenSource.connect(this.destination);
-      
     } catch (error) {
       console.error('Failed to add screen share audio:', error);
     }
@@ -148,7 +158,7 @@ export class DeepgramService {
         }
       };
 
-      this.mediaRecorder.start(250); // Send chunk every 250ms
+      this.mediaRecorder.start(250); 
       console.log('🎙️ Audio recording started (Mixed source)');
 
     } catch (error) {
@@ -157,18 +167,15 @@ export class DeepgramService {
   }
 
   stop() {
-    // Stop Recorder
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.mediaRecorder.stop();
       this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
     }
 
-    // Stop Mic Stream
     if (this.micStream) {
       this.micStream.getTracks().forEach(track => track.stop());
     }
 
-    // Close Audio Context
     if (this.audioContext) {
       this.audioContext.close();
       this.audioContext = null;
@@ -178,7 +185,6 @@ export class DeepgramService {
     this.screenSource = null;
     this.destination = null;
 
-    // Close Socket
     if (this.socket && this.socket.readyState === 1) {
       this.socket.close();
     }
