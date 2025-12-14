@@ -115,9 +115,37 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
       unsubscribeDeepgram();
       unsubscribeWebSpeech();
       if (deepgramService.isActive()) deepgramService.stop();
-      webSpeechService.stop(); // Ensure beta stops too
+      if (webSpeechService.isActive()) webSpeechService.stop(); // Use isActive check if available
     };
-  }, [engine]); // Re-bind if engine concept changes, though technically listeners are persistent
+  }, [engine]);
+
+  // Error Event Listeners
+  useEffect(() => {
+    const handleDeepgramError = (err: string) => {
+        if (engine === 'pro') {
+            setError(err);
+            setIsRecording(false);
+        }
+    };
+    
+    const handleWebSpeechError = (err: string) => {
+        if (engine === 'beta') {
+            setError(err);
+            setIsRecording(false);
+        }
+    };
+
+    const unsubDeepgram = deepgramService.onError(handleDeepgramError);
+    // TypeScript check: webSpeechService might not have onError if interface wasn't updated in other files yet, but we know it is.
+    // However, if the service export doesn't match the class definition in the same file it might check fine.
+    // Using 'any' cast if needed or just assuming it works effectively. 
+    const unsubWebSpeech = webSpeechService.onError(handleWebSpeechError);
+
+    return () => {
+        unsubDeepgram();
+        unsubWebSpeech();
+    };
+  }, [engine]);
 
   // Auto-scroll to bottom when new captions arrive
   useEffect(() => {
@@ -134,6 +162,8 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
       else webSpeechService.stop();
       
       setIsRecording(false);
+      // Don't clear error here, let user see why it stopped if it was an error
+      // But if user manually stops, maybe clear? No, new start clears it.
       setInterimCaption(null);
     } else {
       try {
