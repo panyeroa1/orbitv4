@@ -122,19 +122,32 @@ export class DeepgramService {
   // Method to add Screen Share Audio
   async addScreenShareAudio(stream: MediaStream) {
     if (!this.audioContext || !this.destination) {
-      console.warn('Audio context not initialized. Cannot add screen share audio.');
+      console.warn('Audio context not initialized. Waiting for start() to complete...');
       return;
     }
 
     const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length === 0) return;
+    console.log('🖥️ Screen Share Stream Tracks:', stream.getTracks().map(t => `${t.kind} (enabled: ${t.enabled})`));
+    
+    if (audioTracks.length === 0) {
+      console.warn('⚠️ Screen share stream has NO audio tracks. Did you check "Share tab audio"?');
+      return;
+    }
 
     try {
-      console.log('🖥️ Adding screen share audio to transcription mix');
+      console.log('monitor: Adding screen share audio track:', audioTracks[0].label);
+      
+      // Prevent adding if already exists to avoid feedback loops or double audio
+      if (this.screenSource) {
+         this.screenSource.disconnect();
+      }
+
       this.screenSource = this.audioContext.createMediaStreamSource(stream);
       this.screenSource.connect(this.destination);
+      console.log('✅ Screen share audio successfully mixed!');
+      
     } catch (error) {
-      console.error('Failed to add screen share audio:', error);
+      console.error('❌ Failed to add screen share audio:', error);
     }
   }
 
