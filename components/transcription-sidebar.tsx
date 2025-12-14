@@ -20,6 +20,7 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
   const [interimCaption, setInterimCaption] = useState<{ text: string; speaker: string } | null>(null);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [msgPermission, setMsgPermission] = useState<boolean>(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -29,13 +30,41 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
 
   // Fetch devices on mount
   useEffect(() => {
-    deepgramService.getAudioDevices().then((devices) => {
-      setAudioDevices(devices);
-      // Select default device if available
-      const defaultDevice = devices.find(d => d.deviceId === 'default') || devices[0];
-      if (defaultDevice) setSelectedDeviceId(defaultDevice.deviceId);
-    });
+    const fetchDevices = async () => {
+      try {
+        const devices = await deepgramService.getAudioDevices();
+        if (devices.length > 0) {
+           setAudioDevices(devices);
+           const defaultDevice = devices.find(d => d.deviceId === 'default') || devices[0];
+           if (defaultDevice) setSelectedDeviceId(defaultDevice.deviceId);
+           setMsgPermission(true);
+        } else {
+           setMsgPermission(false);
+        }
+      } catch (e) {
+        console.error("Permission/Device error", e);
+        setMsgPermission(false);
+      }
+    };
+    
+    fetchDevices();
   }, []);
+
+  const requestMicrophoneAccess = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const devices = await deepgramService.getAudioDevices();
+      setAudioDevices(devices);
+      if (devices.length > 0) {
+        setMsgPermission(true);
+        const defaultDevice = devices.find(d => d.deviceId === 'default') || devices[0];
+        if (defaultDevice) setSelectedDeviceId(defaultDevice.deviceId);
+      }
+    } catch (err) {
+      console.error('Microphone permission denied:', err);
+      setError('Microphone access denied. Please allow via browser settings.');
+    }
+  };
 
   // Handle Screen Share Audio Mixing (Deepgram Only)
   useEffect(() => {
@@ -171,30 +200,39 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
           </button>
         </div>
 
-        {/* Device Selector (Only for Pro usually) */}
-        {!isRecording && engine === 'pro' && audioDevices.length > 0 && (
-          <div className="space-y-1">
-             <label className="text-xs text-gray-400">Microphone Source</label>
-             <select
-               aria-label="Select microphone source"
-               value={selectedDeviceId}
-               onChange={(e) => setSelectedDeviceId(e.target.value)}
-               className="w-full rounded-md bg-[#19232D] px-2 py-1.5 text-xs text-white"
-             >
-               {audioDevices.map((device) => (
-                 <option key={device.deviceId} value={device.deviceId}>
-                   {device.label || `Microphone ${device.deviceId.slice(0, 5)}...`}
-                 </option>
-               ))}
-               
-               {/* Explicit option for user confidence, though techincally we mix it automatically */}
-               {isScreenSharing && engine === 'pro' && (
-                 <option value="system-audio">
-                   🖥️ System Audio (Shared Tab) + Mic
-                 </option>
-               )}
-             </select>
-          </div>
+        {/* Permission / Device Selector */}
+        {!msgPermission && !isRecording ? (
+           <button 
+             onClick={requestMicrophoneAccess}
+             className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-xs font-bold text-white hover:bg-orange-700"
+           >
+             <MicOff size={14} />
+             Allow Microphone Access
+           </button>
+        ) : (
+          !isRecording && audioDevices.length > 0 && (
+            <div className="space-y-1">
+               <label className="text-xs text-gray-400">Microphone Source</label>
+               <select
+                 aria-label="Select microphone source"
+                 value={selectedDeviceId}
+                 onChange={(e) => setSelectedDeviceId(e.target.value)}
+                 className="w-full rounded-md bg-[#19232D] px-2 py-1.5 text-xs text-white"
+               >
+                 {audioDevices.map((device) => (
+                   <option key={device.deviceId} value={device.deviceId}>
+                     {device.label || `Microphone ${device.deviceId.slice(0, 5)}...`}
+                   </option>
+                 ))}
+                 
+                 {isScreenSharing && engine === 'pro' && (
+                   <option value="system-audio">
+                     🖥️ System Audio (Shared Tab) + Mic
+                   </option>
+                 )}
+               </select>
+            </div>
+          )
         )}
 
         {/* Start/Stop Button */}
