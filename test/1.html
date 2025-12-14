@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Full Language Support</title>
+    <title>YouTube Player - Regional Language Support</title>
     <style>
-        /* --- VARIABLES & RESET --- */
+        /* --- 1. RESET & VARIABLES --- */
         :root {
             --bg-gradient: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
             --yt-menu-bg: rgba(28, 28, 28, 0.98);
-            --caption-bg: rgba(8, 8, 8, 0.85);
+            --caption-bg: rgba(8, 8, 8, 0.75); /* YouTube style opacity */
             --font-family: 'Roboto', Arial, sans-serif;
+            --accent-color: #3ea6ff;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-family); }
         
@@ -22,29 +23,29 @@
             user-select: none;
         }
 
-        /* --- OVERLAY (Permissions) --- */
+        /* --- 2. STARTUP OVERLAY --- */
         .overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 2000;
+            background: rgba(0,0,0,0.92); z-index: 2000;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            color: white; transition: opacity 0.5s;
+            color: white; transition: opacity 0.4s;
         }
         .overlay.hidden { opacity: 0; pointer-events: none; }
         .start-btn {
-            margin-top: 20px; padding: 12px 30px;
+            margin-top: 25px; padding: 12px 30px;
             background: #ff0000; color: white; border: none;
             font-size: 16px; border-radius: 2px; cursor: pointer; text-transform: uppercase;
-            font-weight: bold;
+            font-weight: 700; letter-spacing: 0.5px;
         }
 
-        /* --- 2-ROW CAPTION CONTAINER (The specific request) --- */
+        /* --- 3. CAPTION CONTAINER (2 Rows, Smaller Font) --- */
         .caption-window {
             position: absolute; 
-            bottom: 100px; 
+            bottom: 100px; /* Space above controls */
             left: 50%;
             transform: translateX(-50%);
             width: auto;
-            max-width: 800px;
+            max-width: 90%;
             pointer-events: none;
             display: none; 
             flex-direction: column;
@@ -55,29 +56,28 @@
         .caption-box {
             background-color: var(--caption-bg);
             color: #fff;
-            padding: 2px 12px;
+            padding: 4px 12px;
             border-radius: 4px;
-            font-size: 26px; /* Big clear text */
-            line-height: 1.5em; /* Define line height */
+            
+            /* SMALLER FONT SETTINGS */
+            font-size: 20px; 
+            line-height: 1.4em;
+            
             text-align: center;
             text-shadow: 0 0 2px #000;
             
-            /* --- LOGIC FOR 2 ROWS ONLY --- */
-            height: 3em; /* Exactly 2 lines (1.5em * 2) */
-            overflow: hidden; /* Hide anything beyond 2 lines */
+            /* HEIGHT LOGIC: 2 lines * 1.4em = 2.8em */
+            height: 2.8em; 
+            overflow: hidden; 
             display: flex;
             flex-direction: column;
-            justify-content: flex-end; /* Keep text pushed to bottom so new text appears */
+            justify-content: flex-end; /* Force text to bottom */
         }
 
-        .caption-content {
-            /* This ensures words wrap naturally */
-            word-wrap: break-word; 
-        }
-
+        .caption-content { word-wrap: break-word; }
         .interim { color: #ccc; }
 
-        /* --- CONTROLS --- */
+        /* --- 4. CONTROLS BAR --- */
         .controls {
             width: 100%; height: 60px;
             position: absolute; bottom: 0;
@@ -88,8 +88,8 @@
         
         .icon-btn {
             background: none; border: none;
-            width: 48px; height: 48px; border-radius: 50%;
-            cursor: pointer; margin-left: 8px;
+            width: 40px; height: 40px; border-radius: 50%;
+            cursor: pointer; margin-left: 10px;
             display: flex; align-items: center; justify-content: center;
         }
         .icon-btn:hover { background: rgba(255,255,255,0.1); }
@@ -98,20 +98,20 @@
         .mic-active svg { fill: #f00; filter: drop-shadow(0 0 5px #f00); }
         .cc-active::after {
             content: ''; position: absolute;
-            bottom: 12px; left: 14px; width: 20px; height: 2px;
-            background: #f00;
+            bottom: 8px; left: 10px; width: 20px; height: 3px;
+            background: #f00; border-radius: 2px;
         }
 
-        /* --- SETTINGS MENU --- */
+        /* --- 5. SETTINGS MENU --- */
         .settings-menu {
             position: absolute; bottom: 70px; right: 20px;
             width: 340px; 
-            max-height: 500px;
+            max-height: 520px; 
             background: var(--yt-menu-bg);
             border-radius: 12px; padding: 8px 0;
             display: none; flex-direction: column;
             backdrop-filter: blur(10px);
-            box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 32px rgba(0,0,0,0.5);
             color: white; font-size: 14px;
             z-index: 200; overflow: hidden;
         }
@@ -129,14 +129,16 @@
         .panel-header {
             padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.1);
             display: flex; align-items: center; gap: 10px; cursor: pointer;
-            font-size: 15px; font-weight: 500;
-            border-top-left-radius: 12px; border-top-right-radius: 12px;
+            font-size: 15px; font-weight: 500; flex-shrink: 0;
         }
         .panel-header:hover { background: rgba(255,255,255,0.1); }
         
-        .scroll-area { overflow-y: auto; flex: 1; padding-bottom: 10px; }
-        .scroll-area::-webkit-scrollbar { width: 6px; }
-        .scroll-area::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+        .scroll-area { 
+            overflow-y: auto; flex: 1; padding-bottom: 10px; 
+        }
+        .scroll-area::-webkit-scrollbar { width: 8px; }
+        .scroll-area::-webkit-scrollbar-thumb { background: #666; border-radius: 4px; border: 2px solid #1c1c1c; }
+        .scroll-area::-webkit-scrollbar-track { background: transparent; }
 
         .check-icon { width: 18px; height: 18px; opacity: 0; }
         .menu-item.selected .check-icon { opacity: 1; }
@@ -146,24 +148,23 @@
 </head>
 <body>
 
-    <!-- STARTUP SCREEN -->
+    <!-- OVERLAY -->
     <div class="overlay" id="overlay">
         <h2>YouTube Live Captions</h2>
-        <p style="color:#ccc; margin-top:5px; font-size: 14px;">Full Language Support & 2-Row Layout</p>
+        <p style="color:#aaa; margin-top:5px; font-size: 13px;">Region Support • 2-Row Layout • Smaller Font</p>
         <button class="start-btn" onclick="init()">Launch Player</button>
     </div>
 
-    <!-- CAPTION AREA -->
+    <!-- CAPTIONS -->
     <div class="caption-window" id="captionWindow">
         <div class="caption-box">
-            <!-- Text goes here. CSS ensures 2 rows max -->
             <span id="captionContent" class="caption-content"></span>
         </div>
     </div>
 
     <!-- CONTROLS -->
     <div class="controls">
-        <button class="icon-btn" id="micBtn" onclick="toggleMic()" title="Toggle Microphone">
+        <button class="icon-btn" id="micBtn" onclick="toggleMic()" title="Microphone Toggle">
             <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
         </button>
         <button class="icon-btn" id="ccBtn" onclick="toggleCC()" title="Subtitles/CC">
@@ -177,7 +178,7 @@
     <!-- SETTINGS MENU -->
     <div class="settings-menu" id="settingsMenu">
         
-        <!-- Panel 1: Main -->
+        <!-- P1: Main -->
         <div class="panel active" id="p-main">
             <div class="menu-item" onclick="nav('p-source')">
                 <div style="display:flex; align-items:center; gap:10px;">
@@ -195,7 +196,7 @@
             </div>
         </div>
 
-        <!-- Panel 2: Source Language List (Full) -->
+        <!-- P2: Source List -->
         <div class="panel" id="p-source">
             <div class="panel-header" onclick="nav('p-main')">
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
@@ -204,7 +205,7 @@
             <div class="scroll-area" id="listSource"></div>
         </div>
 
-        <!-- Panel 3: Subtitle Options -->
+        <!-- P3: Subtitle Options -->
         <div class="panel" id="p-subs">
             <div class="panel-header" onclick="nav('p-main')">
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
@@ -221,7 +222,7 @@
             </div>
         </div>
 
-        <!-- Panel 4: Translation Languages (Full) -->
+        <!-- P4: Target List -->
         <div class="panel" id="p-auto">
             <div class="panel-header" onclick="nav('p-subs')">
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
@@ -233,34 +234,142 @@
     </div>
 
 <script>
-    /* --- DATA: FULL LANGUAGE LIST --- */
-    // Used for both Source (Speech Recognition Codes) and Target (Mock Translation)
+    /* --- DATA: EXTENSIVE REGIONAL LANGUAGE LIST --- */
     const fullLanguages = [
-        {name: "Afrikaans", code: "af-ZA"}, {name: "Albanian", code: "sq-AL"}, {name: "Amharic", code: "am-ET"}, {name: "Arabic", code: "ar-SA"}, 
-        {name: "Armenian", code: "hy-AM"}, {name: "Azerbaijani", code: "az-AZ"}, {name: "Basque", code: "eu-ES"}, {name: "Bengali", code: "bn-BD"}, 
-        {name: "Bosnian", code: "bs-BA"}, {name: "Bulgarian", code: "bg-BG"}, {name: "Burmese", code: "my-MM"}, {name: "Catalan", code: "ca-ES"}, 
-        {name: "Cebuano", code: "ceb-PH"}, {name: "Chinese (Simplified)", code: "zh-CN"}, {name: "Chinese (Traditional)", code: "zh-TW"}, 
-        {name: "Croatian", code: "hr-HR"}, {name: "Czech", code: "cs-CZ"}, {name: "Danish", code: "da-DK"}, {name: "Dutch", code: "nl-NL"}, 
-        {name: "English (US)", code: "en-US"}, {name: "English (UK)", code: "en-GB"}, {name: "Esperanto", code: "eo"}, {name: "Estonian", code: "et-EE"}, 
-        {name: "Filipino", code: "fil-PH"}, {name: "Finnish", code: "fi-FI"}, {name: "French", code: "fr-FR"}, {name: "Galician", code: "gl-ES"}, 
-        {name: "Georgian", code: "ka-GE"}, {name: "German", code: "de-DE"}, {name: "Greek", code: "el-GR"}, {name: "Gujarati", code: "gu-IN"}, 
-        {name: "Haitian Creole", code: "ht-HT"}, {name: "Hausa", code: "ha-NG"}, {name: "Hebrew", code: "he-IL"}, {name: "Hindi", code: "hi-IN"}, 
-        {name: "Hmong", code: "hmn"}, {name: "Hungarian", code: "hu-HU"}, {name: "Icelandic", code: "is-IS"}, {name: "Igbo", code: "ig-NG"}, 
-        {name: "Ilocano", code: "ilo-PH"}, {name: "Indonesian", code: "id-ID"}, {name: "Irish", code: "ga-IE"}, {name: "Italian", code: "it-IT"}, 
-        {name: "Japanese", code: "ja-JP"}, {name: "Javanese", code: "jv-ID"}, {name: "Kannada", code: "kn-IN"}, {name: "Kazakh", code: "kk-KZ"}, 
-        {name: "Khmer", code: "km-KH"}, {name: "Korean", code: "ko-KR"}, {name: "Lao", code: "lo-LA"}, {name: "Latin", code: "la"}, 
-        {name: "Latvian", code: "lv-LV"}, {name: "Lithuanian", code: "lt-LT"}, {name: "Macedonian", code: "mk-MK"}, {name: "Malagasy", code: "mg-MG"}, 
-        {name: "Malay", code: "ms-MY"}, {name: "Malayalam", code: "ml-IN"}, {name: "Maltese", code: "mt-MT"}, {name: "Maori", code: "mi-NZ"}, 
-        {name: "Marathi", code: "mr-IN"}, {name: "Mongolian", code: "mn-MN"}, {name: "Nepali", code: "ne-NP"}, {name: "Norwegian", code: "no-NO"}, 
-        {name: "Nyanja", code: "ny-MW"}, {name: "Pashto", code: "ps-AF"}, {name: "Persian", code: "fa-IR"}, {name: "Polish", code: "pl-PL"}, 
-        {name: "Portuguese", code: "pt-PT"}, {name: "Portuguese (Brazil)", code: "pt-BR"}, {name: "Punjabi", code: "pa-IN"}, {name: "Romanian", code: "ro-RO"}, 
-        {name: "Russian", code: "ru-RU"}, {name: "Samoan", code: "sm-WS"}, {name: "Scots Gaelic", code: "gd-GB"}, {name: "Serbian", code: "sr-RS"}, 
-        {name: "Sesotho", code: "st-LS"}, {name: "Shona", code: "sn-ZW"}, {name: "Sindhi", code: "sd-PK"}, {name: "Sinhala", code: "si-LK"}, 
-        {name: "Slovak", code: "sk-SK"}, {name: "Slovenian", code: "sl-SI"}, {name: "Somali", code: "so-SO"}, {name: "Spanish", code: "es-ES"}, 
-        {name: "Sundanese", code: "su-ID"}, {name: "Swahili", code: "sw-KE"}, {name: "Swedish", code: "sv-SE"}, {name: "Tajik", code: "tg-TJ"}, 
-        {name: "Tamil", code: "ta-IN"}, {name: "Telugu", code: "te-IN"}, {name: "Thai", code: "th-TH"}, {name: "Turkish", code: "tr-TR"}, 
-        {name: "Ukrainian", code: "uk-UA"}, {name: "Urdu", code: "ur-PK"}, {name: "Uzbek", code: "uz-UZ"}, {name: "Vietnamese", code: "vi-VN"}, 
-        {name: "Welsh", code: "cy-GB"}, {name: "Xhosa", code: "xh-ZA"}, {name: "Yiddish", code: "yi"}, {name: "Yoruba", code: "yo-NG"}, {name: "Zulu", code: "zu-ZA"}
+        { name: "Afrikaans", code: "af-ZA" },
+        { name: "Albanian", code: "sq-AL" },
+        { name: "Amharic", code: "am-ET" },
+        { name: "Arabic (Algeria)", code: "ar-DZ" },
+        { name: "Arabic (Bahrain)", code: "ar-BH" },
+        { name: "Arabic (Egypt)", code: "ar-EG" },
+        { name: "Arabic (Iraq)", code: "ar-IQ" },
+        { name: "Arabic (Jordan)", code: "ar-JO" },
+        { name: "Arabic (Kuwait)", code: "ar-KW" },
+        { name: "Arabic (Lebanon)", code: "ar-LB" },
+        { name: "Arabic (Morocco)", code: "ar-MA" },
+        { name: "Arabic (Oman)", code: "ar-OM" },
+        { name: "Arabic (Qatar)", code: "ar-QA" },
+        { name: "Arabic (Saudi Arabia)", code: "ar-SA" },
+        { name: "Arabic (State of Palestine)", code: "ar-PS" },
+        { name: "Arabic (Tunisia)", code: "ar-TN" },
+        { name: "Arabic (UAE)", code: "ar-AE" },
+        { name: "Armenian", code: "hy-AM" },
+        { name: "Azerbaijani", code: "az-AZ" },
+        { name: "Basque", code: "eu-ES" },
+        { name: "Bengali (Bangladesh)", code: "bn-BD" },
+        { name: "Bengali (India)", code: "bn-IN" },
+        { name: "Bosnian", code: "bs-BA" },
+        { name: "Bulgarian", code: "bg-BG" },
+        { name: "Burmese", code: "my-MM" },
+        { name: "Catalan", code: "ca-ES" },
+        { name: "Cebuano", code: "ceb-PH" },
+        { name: "Chinese (Cantonese)", code: "yue-Hant-HK" },
+        { name: "Chinese (Mandarin, Simplified)", code: "zh-CN" },
+        { name: "Chinese (Mandarin, Traditional)", code: "zh-TW" },
+        { name: "Croatian", code: "hr-HR" },
+        { name: "Czech", code: "cs-CZ" },
+        { name: "Danish", code: "da-DK" },
+        { name: "Dutch (Belgium)", code: "nl-BE" },
+        { name: "Dutch (Netherlands)", code: "nl-NL" },
+        { name: "English (Australia)", code: "en-AU" },
+        { name: "English (Canada)", code: "en-CA" },
+        { name: "English (Ghana)", code: "en-GH" },
+        { name: "English (India)", code: "en-IN" },
+        { name: "English (Ireland)", code: "en-IE" },
+        { name: "English (Kenya)", code: "en-KE" },
+        { name: "English (New Zealand)", code: "en-NZ" },
+        { name: "English (Nigeria)", code: "en-NG" },
+        { name: "English (Philippines)", code: "en-PH" },
+        { name: "English (South Africa)", code: "en-ZA" },
+        { name: "English (Tanzania)", code: "en-TZ" },
+        { name: "English (United Kingdom)", code: "en-GB" },
+        { name: "English (United States)", code: "en-US" },
+        { name: "Estonian", code: "et-EE" },
+        { name: "Filipino", code: "fil-PH" },
+        { name: "Finnish", code: "fi-FI" },
+        { name: "French (Belgium)", code: "fr-BE" },
+        { name: "French (Canada)", code: "fr-CA" },
+        { name: "French (France)", code: "fr-FR" },
+        { name: "French (Switzerland)", code: "fr-CH" },
+        { name: "Galician", code: "gl-ES" },
+        { name: "Georgian", code: "ka-GE" },
+        { name: "German (Austria)", code: "de-AT" },
+        { name: "German (Germany)", code: "de-DE" },
+        { name: "German (Switzerland)", code: "de-CH" },
+        { name: "Greek", code: "el-GR" },
+        { name: "Gujarati", code: "gu-IN" },
+        { name: "Hebrew", code: "he-IL" },
+        { name: "Hindi", code: "hi-IN" },
+        { name: "Hungarian", code: "hu-HU" },
+        { name: "Icelandic", code: "is-IS" },
+        { name: "Ilocano", code: "ilo-PH" },
+        { name: "Indonesian", code: "id-ID" },
+        { name: "Italian (Italy)", code: "it-IT" },
+        { name: "Italian (Switzerland)", code: "it-CH" },
+        { name: "Japanese", code: "ja-JP" },
+        { name: "Javanese", code: "jv-ID" },
+        { name: "Kannada", code: "kn-IN" },
+        { name: "Kazakh", code: "kk-KZ" },
+        { name: "Khmer", code: "km-KH" },
+        { name: "Korean", code: "ko-KR" },
+        { name: "Lao", code: "lo-LA" },
+        { name: "Latvian", code: "lv-LV" },
+        { name: "Lithuanian", code: "lt-LT" },
+        { name: "Macedonian", code: "mk-MK" },
+        { name: "Malay", code: "ms-MY" },
+        { name: "Malayalam", code: "ml-IN" },
+        { name: "Marathi", code: "mr-IN" },
+        { name: "Mongolian", code: "mn-MN" },
+        { name: "Nepali", code: "ne-NP" },
+        { name: "Norwegian Bokmål", code: "nb-NO" },
+        { name: "Persian", code: "fa-IR" },
+        { name: "Polish", code: "pl-PL" },
+        { name: "Portuguese (Brazil)", code: "pt-BR" },
+        { name: "Portuguese (Portugal)", code: "pt-PT" },
+        { name: "Punjabi (Gurmukhi)", code: "pa-Guru-IN" },
+        { name: "Romanian", code: "ro-RO" },
+        { name: "Russian", code: "ru-RU" },
+        { name: "Serbian", code: "sr-RS" },
+        { name: "Sinhala", code: "si-LK" },
+        { name: "Slovak", code: "sk-SK" },
+        { name: "Slovenian", code: "sl-SI" },
+        { name: "Spanish (Argentina)", code: "es-AR" },
+        { name: "Spanish (Bolivia)", code: "es-BO" },
+        { name: "Spanish (Chile)", code: "es-CL" },
+        { name: "Spanish (Colombia)", code: "es-CO" },
+        { name: "Spanish (Costa Rica)", code: "es-CR" },
+        { name: "Spanish (Dominican Republic)", code: "es-DO" },
+        { name: "Spanish (Ecuador)", code: "es-EC" },
+        { name: "Spanish (El Salvador)", code: "es-SV" },
+        { name: "Spanish (Guatemala)", code: "es-GT" },
+        { name: "Spanish (Honduras)", code: "es-HN" },
+        { name: "Spanish (Mexico)", code: "es-MX" },
+        { name: "Spanish (Nicaragua)", code: "es-NI" },
+        { name: "Spanish (Panama)", code: "es-PA" },
+        { name: "Spanish (Paraguay)", code: "es-PY" },
+        { name: "Spanish (Peru)", code: "es-PE" },
+        { name: "Spanish (Puerto Rico)", code: "es-PR" },
+        { name: "Spanish (Spain)", code: "es-ES" },
+        { name: "Spanish (United States)", code: "es-US" },
+        { name: "Spanish (Uruguay)", code: "es-UY" },
+        { name: "Spanish (Venezuela)", code: "es-VE" },
+        { name: "Sundanese", code: "su-ID" },
+        { name: "Swahili (Kenya)", code: "sw-KE" },
+        { name: "Swahili (Tanzania)", code: "sw-TZ" },
+        { name: "Swedish", code: "sv-SE" },
+        { name: "Tamil (India)", code: "ta-IN" },
+        { name: "Tamil (Malaysia)", code: "ta-MY" },
+        { name: "Tamil (Singapore)", code: "ta-SG" },
+        { name: "Tamil (Sri Lanka)", code: "ta-LK" },
+        { name: "Telugu", code: "te-IN" },
+        { name: "Thai", code: "th-TH" },
+        { name: "Turkish", code: "tr-TR" },
+        { name: "Ukrainian", code: "uk-UA" },
+        { name: "Urdu (India)", code: "ur-IN" },
+        { name: "Urdu (Pakistan)", code: "ur-PK" },
+        { name: "Uzbek", code: "uz-UZ" },
+        { name: "Vietnamese", code: "vi-VN" },
+        { name: "Zulu", code: "zu-ZA" }
     ];
 
     /* --- STATE --- */
@@ -269,52 +378,54 @@
         captions: false,
         sourceCode: navigator.language || 'en-US',
         sourceName: 'Auto-detect',
-        targetLang: 'Off', // 'Off', 'Original (CC)', or a Language Name e.g. "Spanish"
-        buffer: [] // Keeps track of words for the 2-row logic
+        targetLang: 'Off',
+        bufferText: "" // Holds the committed text
     };
-
+    
     let recognition;
 
-    /* --- INIT --- */
+    /* --- INITIALIZATION --- */
     function init() {
         document.getElementById('overlay').classList.add('hidden');
         
-        // Populate Lists
+        // 1. Build Source Menu
         const srcList = document.getElementById('listSource');
-        const tgtList = document.getElementById('listTarget');
-        
-        // Add Auto-detect to Source
-        let autoItem = document.createElement('div');
-        autoItem.className = 'menu-item selected';
-        autoItem.innerHTML = `<span>Auto-detect</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
-        autoItem.onclick = () => { setSource('Auto-detect', navigator.language || 'en-US', autoItem); };
+        // Auto-detect item
+        let autoItem = createItem("Auto-detect (System)", true);
+        autoItem.onclick = () => setSource('Auto-detect', navigator.language || 'en-US', autoItem);
         srcList.appendChild(autoItem);
-
+        // Full List
         fullLanguages.forEach(l => {
-            // Populate Source
-            let sItem = document.createElement('div');
-            sItem.className = 'menu-item';
-            sItem.innerHTML = `<span>${l.name}</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
-            sItem.onclick = () => { setSource(l.name, l.code, sItem); };
-            srcList.appendChild(sItem);
-
-            // Populate Target
-            let tItem = document.createElement('div');
-            tItem.className = 'menu-item';
-            tItem.innerHTML = `<span>${l.name}</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
-            tItem.onclick = () => { setTarget(l.name); };
-            tgtList.appendChild(tItem);
+            let item = createItem(l.name, false);
+            item.onclick = () => setSource(l.name, l.code, item);
+            srcList.appendChild(item);
         });
 
-        startRecognition();
+        // 2. Build Target Menu
+        const tgtList = document.getElementById('listTarget');
+        fullLanguages.forEach(l => {
+            let item = createItem(l.name, false);
+            item.onclick = () => setTarget(l.name);
+            tgtList.appendChild(item);
+        });
+
+        // 3. Start
+        setupSpeech();
     }
 
-    function startRecognition() {
+    function createItem(txt, sel) {
+        const d = document.createElement('div');
+        d.className = 'menu-item' + (sel ? ' selected' : '');
+        d.innerHTML = `<span>${txt}</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
+        return d;
+    }
+
+    /* --- SPEECH LOGIC --- */
+    function setupSpeech() {
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if(!SR) return alert("Please use Chrome or Edge.");
-        
+        if(!SR) return alert("Please use Chrome or Edge for Speech API support.");
+
         if(recognition) recognition.stop();
-        
         recognition = new SR();
         recognition.continuous = true;
         recognition.interimResults = true;
@@ -328,162 +439,113 @@
             state.listening = false;
             document.getElementById('micBtn').classList.remove('mic-active');
         };
-        recognition.onresult = processResult;
-
+        recognition.onresult = processTranscript;
+        
         recognition.start();
     }
 
-    /* --- THE 2-ROW CAPTION LOGIC --- */
-    // This logic mimics the specific "fill first, then second, then scroll" behavior
-    // by managing a text buffer and checking container height.
-    function processResult(event) {
+    /* --- 2-ROW CAPTION RENDERER --- */
+    function processTranscript(event) {
         if(!state.captions) return;
 
         let final = '', interim = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) final += event.results[i][0].transcript;
+            if(event.results[i].isFinal) final += event.results[i][0].transcript;
             else interim += event.results[i][0].transcript;
         }
 
-        // Apply "Mock" Translation if needed
+        // Apply Fake Translation
         if(state.targetLang !== 'Off' && state.targetLang !== 'Original (CC)') {
             final = mockTranslate(final, state.targetLang);
             interim = mockTranslate(interim, state.targetLang);
         }
 
-        renderTwoRows(final, interim);
+        updateDisplay(final, interim);
     }
 
-    // A persistent text variable to hold the "committed" lines
-    let committedText = ""; 
-
-    function renderTwoRows(finalChunk, interimChunk) {
-        const el = document.getElementById('captionContent');
+    function updateDisplay(finalChunk, interimChunk) {
         const box = document.querySelector('.caption-box');
-        
-        // If we have final text, append it to our committed history
-        if (finalChunk) {
-            committedText += (committedText ? " " : "") + finalChunk;
+        const content = document.getElementById('captionContent');
+
+        // Add final text to buffer
+        if(finalChunk) {
+            state.bufferText += (state.bufferText ? " " : "") + finalChunk;
         }
 
-        // Combine committed + interim for display
-        let fullDisplay = committedText + (interimChunk ? " " + interimChunk : "");
+        let fullText = state.bufferText;
         
-        // Set text
-        el.innerHTML = fullDisplay + (interimChunk ? ` <span class="interim">${interimChunk}</span>` : "");
-        el.textContent = fullDisplay; // Plain text for checking wrapping
+        // Render
+        content.innerHTML = fullText + (interimChunk ? ` <span class="interim">${interimChunk}</span>` : "");
 
-        // Highlight interim in DOM
-        if (interimChunk) {
-             const words = fullDisplay.split(" ");
-             // This simple logic rebuilds HTML to gray out the last few words corresponding to interim
-             // For strict 2-row logic, plain text replacement is safer to calculate height, 
-             // but let's just stick to plain text logic for overflow, then render HTML.
-             el.innerHTML = committedText + ` <span class="interim">${interimChunk}</span>`;
-        } else {
-             el.innerHTML = committedText;
-        }
-
-        // --- OVERFLOW LOGIC ---
-        // The container .caption-box has fixed height (3em).
-        // If scrollHeight > clientHeight, we have exceeded 2 lines.
-        // We must chop words off the beginning of 'committedText' until it fits.
-        
-        while (box.scrollHeight > box.clientHeight) {
-            // Find first space and slice
-            const spaceIdx = committedText.indexOf(' ');
-            if (spaceIdx > -1) {
-                committedText = committedText.slice(spaceIdx + 1);
+        // --- SCROLL / WRAP LOGIC ---
+        // While content height > box height (2.8em), remove words from top
+        while(box.scrollHeight > box.clientHeight) {
+            // Find first space
+            const idx = state.bufferText.indexOf(' ');
+            if(idx > -1) {
+                state.bufferText = state.bufferText.slice(idx + 1);
             } else {
-                // One giant word? Just clear it to be safe or break it.
-                committedText = ""; 
+                state.bufferText = ""; // Safety
             }
-            
-            // Re-render to check height again
-            el.innerHTML = committedText + (interimChunk ? ` <span class="interim">${interimChunk}</span>` : "");
+            // Re-render
+            content.innerHTML = state.bufferText + (interimChunk ? ` <span class="interim">${interimChunk}</span>` : "");
         }
     }
 
-    /* --- MOCK TRANSLATION ENGINE --- */
-    // Simulates visual translation for 100+ languages without an API
-    function mockTranslate(text, langName) {
+    /* --- MOCK TRANSLATOR --- */
+    function mockTranslate(text, lang) {
         if(!text) return "";
-        
-        // Simple word map for demo purposes
-        const basic = {
-            'Spanish': {'hello':'hola', 'world':'mundo', 'is':'es', 'a':'un'},
-            'Filipino': {'hello':'kamusta', 'world':'mundo', 'is':'ay', 'a':'ang'},
-            'Cebuano': {'hello':'kumusta', 'world':'kalibutan', 'is':'kay'},
-            'French': {'hello':'bonjour', 'world':'monde', 'is':'est', 'a':'un'},
-            'German': {'hello':'hallo', 'world':'welt', 'is':'ist', 'a':'ein'}
-        };
-        
-        return text.split(' ').map(word => {
-            const clean = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return text.split(' ').map(w => {
+            let clean = w.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if(!clean) return w;
             
-            // 1. Check basic dictionary
-            if(basic[langName] && basic[langName][clean]) return basic[langName][clean];
-
-            // 2. Algorithmic Transformation (The "Fake" Translator)
-            // This makes the text look different based on the language name hash
-            let transformed = word;
-            
-            if(['Spanish', 'Italian', 'Portuguese'].some(x=>langName.includes(x))) {
-                if(!/[aeiou]$/.test(clean) && clean.length > 3) transformed += 'o';
-            } else if(['Filipino', 'Cebuano', 'Ilocano'].some(x=>langName.includes(x))) {
-                transformed = transformed.replace('c','k').replace('f','p').replace('v','b');
-            } else if(langName.includes('German') || langName.includes('Dutch')) {
-                if(clean.length > 4) transformed = 'ge' + transformed;
-            } else {
-                // General "foreign" look for others
-                // Just swap some vowels for visual difference
-                if(clean.length % 2 === 0) transformed = transformed.replace('e', 'a');
+            // Simple visual rules
+            if(lang.includes('Spanish') || lang.includes('Portuguese')) {
+                if(clean.length>3 && !/[aeiou]$/.test(clean)) return w + 'o';
+            } else if(lang.includes('Filipino') || lang.includes('Cebuano') || lang.includes('Ilocano')) {
+                return w.replace('c','k').replace('f','p').replace('v','b');
+            } else if(lang.includes('German') || lang.includes('Dutch')) {
+                if(clean.length>4) return 'ge'+w;
             }
-
-            return transformed;
+            return w;
         }).join(' ');
     }
 
-    /* --- UI NAVIGATION --- */
-    function setSource(name, code, element) {
+    /* --- NAVIGATION --- */
+    function setSource(name, code, el) {
         state.sourceName = name;
         state.sourceCode = code;
-        document.getElementById('lblSource').innerText = name;
+        document.getElementById('lblSource').textContent = name;
         
-        // Update checkmarks
         document.querySelectorAll('#p-source .menu-item').forEach(i => i.classList.remove('selected'));
-        if(element) element.classList.add('selected');
+        if(el) el.classList.add('selected');
 
-        // Restart Rec
         if(recognition) {
             recognition.stop();
             recognition.lang = code;
-            setTimeout(() => { if(state.listening) recognition.start(); }, 500);
+            setTimeout(() => { recognition.start(); }, 500);
         }
         nav('p-main');
     }
 
-    function setTarget(val) {
-        state.targetLang = val;
-        state.captions = (val !== 'Off');
-        document.getElementById('lblTarget').innerText = val;
+    function setTarget(name) {
+        state.targetLang = name;
+        document.getElementById('lblTarget').textContent = name;
+        state.captions = (name !== 'Off');
 
-        // Update main menu checkmarks
         document.querySelectorAll('#p-subs .menu-item').forEach(i => i.classList.remove('selected'));
+        if(name === 'Off') document.getElementById('opt-off').classList.add('selected');
+        else if(name === 'Original (CC)') document.getElementById('opt-orig').classList.add('selected');
         
-        if(val === 'Off') document.getElementById('opt-off').classList.add('selected');
-        else if(val === 'Original (CC)') document.getElementById('opt-orig').classList.add('selected');
-        
-        updateCaptionsVisibility();
+        updateCapUI();
         document.getElementById('settingsMenu').classList.remove('open');
     }
 
-    function updateCaptionsVisibility() {
+    function updateCapUI() {
         document.getElementById('ccBtn').classList.toggle('cc-active', state.captions);
         document.getElementById('captionWindow').classList.toggle('active', state.captions);
         if(!state.captions) {
-            // Clear text when turned off
-            committedText = "";
+            state.bufferText = "";
             document.getElementById('captionContent').innerHTML = "";
         }
     }
@@ -492,12 +554,12 @@
         if(state.listening) recognition.stop();
         else recognition.start();
     }
-
+    
     function toggleCC() {
         if(state.captions) setTarget('Off');
         else setTarget('Original (CC)');
     }
-
+    
     function toggleSettings() {
         const m = document.getElementById('settingsMenu');
         m.classList.toggle('open');

@@ -3,522 +3,690 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic YouTube Live Captions UI</title>
+    <title>YouTube-Style Live Captions</title>
     <style>
-        /* --- CORE VARIABLES & RESET --- */
-        :root {
-            --yt-spec-base-background: #0f0f0f;
-            --yt-spec-text-primary: #fff;
-            --yt-spec-text-secondary: #aaa;
-            --yt-spec-menu-background: rgba(28, 28, 28, 0.9);
-            --yt-caption-bg: rgba(8, 8, 8, 0.75);
-            --font-primary: 'Roboto', Arial, sans-serif;
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
         }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-primary); }
 
         body {
+            background: #0f0f0f;
             height: 100vh;
-            width: 100vw;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            /* DARK BLUE GRADIENT BACKGROUND */
-            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
-            overflow: hidden;
-            user-select: none;
-        }
-
-        /* --- UI CONTAINER --- */
-        .player-ui {
-            width: 100%;
-            height: 100%;
-            position: relative;
             display: flex;
             flex-direction: column;
-            justify-content: flex-end;
-        }
-
-        /* --- CAPTION OVERLAY (Dynamic) --- */
-        .caption-window {
-            position: absolute;
-            bottom: 100px; /* Space for controls */
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: var(--yt-caption-bg);
-            padding: 4px 12px;
-            border-radius: 2px;
-            font-size: 24px; /* Larger for readability */
-            line-height: 1.4;
-            text-align: center;
-            max-width: 800px;
-            width: auto;
-            pointer-events: none;
-            text-shadow: 0 0 2px black;
-            display: none; /* Hidden by default */
-        }
-        
-        .caption-window.visible {
-            display: inline-block;
-        }
-
-        .caption-line {
-            display: inline;
-        }
-
-        /* Interim results (text being processed) are usually gray/italic */
-        .interim {
-            color: #ccc;
-        }
-
-        /* --- CONTROLS BAR --- */
-        .controls-bar {
-            width: 100%;
-            height: 60px;
-            background: rgba(0, 0, 0, 0.6);
-            display: flex;
-            align-items: center;
-            justify-content: flex-end; /* Align right */
-            padding: 0 24px;
-            z-index: 100;
-        }
-
-        /* Generic Icon Button */
-        .yt-button {
-            background: none;
-            border: none;
-            cursor: pointer;
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
             justify-content: center;
-            transition: background 0.1s;
-            margin-left: 8px;
-            position: relative;
+            align-items: center;
+            color: white;
+            padding: 20px;
         }
 
-        .yt-button:hover { background: rgba(255, 255, 255, 0.1); }
-        .yt-button svg { fill: white; width: 24px; height: 24px; }
-        
-        /* Red underline for CC when active */
-        .cc-active::after {
-            content: '';
-            position: absolute;
-            bottom: 10px;
-            left: 12px;
-            width: 24px;
-            height: 2px;
-            background-color: #f00;
-            border-radius: 2px;
-        }
-        
-        .mic-active svg { fill: #f00; animation: pulse 1.5s infinite; }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
 
-        /* --- SETTINGS MENU (The Complex Part) --- */
-        .settings-popup {
-            position: absolute;
-            bottom: 70px;
-            right: 24px;
-            width: 300px;
-            background-color: var(--yt-spec-menu-background);
+        /* Caption Display Area */
+        .caption-container {
+            background: rgba(0, 0, 0, 0.8);
             border-radius: 12px;
-            padding: 8px 0;
-            display: none;
+            padding: 30px;
+            min-height: 180px;
+            display: flex;
             flex-direction: column;
-            color: var(--yt-spec-text-primary);
+            justify-content: center;
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .caption-row {
+            padding: 15px 0;
+            font-size: 28px;
+            line-height: 1.4;
+            min-height: 60px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .caption-row:first-child {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .caption-row.original {
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        .caption-row.translated {
+            color: #aaa;
+            font-size: 24px;
+        }
+
+        .caption-label {
+            position: absolute;
+            top: 10px;
+            left: 15px;
+            font-size: 12px;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .caption-label.right {
+            left: auto;
+            right: 15px;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
             font-size: 14px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 4px 32px rgba(0,0,0,0.5);
-            z-index: 200;
+            transition: all 0.2s ease;
+            min-width: 140px;
+            justify-content: center;
         }
 
-        .settings-popup.open { display: flex; }
-
-        /* Panels for navigation */
-        .panel { display: none; width: 100%; }
-        .panel.active { display: block; animation: slideIn 0.2s ease-out; }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(20px); }
-            to { opacity: 1; transform: translateX(0); }
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
         }
 
-        /* Menu Items */
-        .menu-item {
+        .control-btn.active {
+            background: #cc0000;
+        }
+
+        .control-btn.active:hover {
+            background: #ff0000;
+        }
+
+        .btn-icon {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Language Selector */
+        .language-selector {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .language-row {
             display: flex;
+            gap: 20px;
             align-items: center;
-            justify-content: space-between;
-            padding: 10px 16px;
-            cursor: pointer;
-            min-height: 40px;
+            justify-content: center;
+            flex-wrap: wrap;
         }
 
-        .menu-item:hover { background-color: rgba(255, 255, 255, 0.1); }
-
-        .item-left { display: flex; align-items: center; gap: 12px; }
-        .item-right { display: flex; align-items: center; gap: 6px; color: var(--yt-spec-text-secondary); font-size: 13px; }
-
-        /* Header for sub-menus */
-        .panel-header {
-            padding: 10px 10px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+        .language-group {
             display: flex;
-            align-items: center;
-            font-size: 15px;
-            cursor: pointer;
-            gap: 10px;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            min-width: 300px;
         }
-        .panel-header:hover { background-color: rgba(255, 255, 255, 0.1); }
 
-        /* Scroll area for languages */
-        .scroll-view { max-height: 300px; overflow-y: auto; }
-        .scroll-view::-webkit-scrollbar { width: 8px; }
-        .scroll-view::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
-        .scroll-view::-webkit-scrollbar-track { background: transparent; }
+        .language-label {
+            font-size: 12px;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
 
-        /* Icons */
-        .check-icon { width: 18px; height: 18px; opacity: 0; transition: opacity 0.2s; }
-        .menu-item.selected .check-icon { opacity: 1; }
+        select {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            width: 100%;
+            cursor: pointer;
+            height: 42px;
+        }
 
+        select:focus {
+            outline: none;
+            border-color: #cc0000;
+        }
+
+        option {
+            background: #1f1f1f;
+            color: white;
+        }
+
+        /* Status Indicator */
+        .status {
+            text-align: center;
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 10px;
+        }
+
+        .status.active {
+            color: #4CAF50;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .caption-row {
+                font-size: 22px;
+            }
+            
+            .caption-row.translated {
+                font-size: 20px;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .control-btn {
+                width: 100%;
+                max-width: 300px;
+            }
+            
+            .language-group {
+                min-width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
-
-<div class="player-ui">
-
-    <!-- 1. CAPTION AREA -->
-    <div class="caption-window" id="captionBox">
-        <span id="captionText" class="caption-line"></span>
-    </div>
-
-    <!-- 2. CONTROLS -->
-    <div class="controls-bar">
-        <!-- Mic Toggle (For Demo Purposes) -->
-        <button class="yt-button" id="micBtn" title="Start Microphone Input">
-            <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-        </button>
-
-        <!-- CC Toggle -->
-        <button class="yt-button" id="ccBtn" title="Turn on/off subtitles">
-            <svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H5v-2h6v2zm0 4H5v-2h6v2zm8 0h-6v-2h6v2zm0-4h-6v-2h6v2z"/></svg>
-        </button>
-
-        <!-- Settings Toggle -->
-        <button class="yt-button" id="settingsBtn" title="Settings">
-            <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-        </button>
-    </div>
-
-    <!-- 3. DYNAMIC SETTINGS MENU -->
-    <div class="settings-popup" id="settingsMenu">
-        
-        <!-- PANEL: MAIN -->
-        <div class="panel active" id="panel-main">
-            <!-- Normal Menu Items -->
-            <div class="menu-item">
-                <div class="item-left">
-                    <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M10 16.5l6-4.5-6-4.5v9zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
-                    <span>Playback speed</span>
-                </div>
-                <div class="item-right">Normal <svg viewBox="0 0 24 24" width="20" height="20" fill="#aaa"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-            </div>
-
-            <!-- SUBTITLES TRIGGER -->
-            <div class="menu-item" onclick="navTo('panel-subtitles')">
-                <div class="item-left">
-                    <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H5v-2h6v2zm0 4H5v-2h6v2zm8 0h-6v-2h6v2zm0-4h-6v-2h6v2z"/></svg>
-                    <span>Subtitles/CC</span>
-                </div>
-                <div class="item-right">
-                    <span id="main-menu-lang">Off</span> 
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="#aaa"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
-            </div>
-        </div>
-
-        <!-- PANEL: SUBTITLES -->
-        <div class="panel" id="panel-subtitles">
-            <div class="panel-header" onclick="navTo('panel-main')">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-                <span>Subtitles/CC</span>
+    <div class="container">
+        <div class="caption-container">
+            <div class="caption-label">Original</div>
+            <div class="caption-label right">Translated</div>
+            
+            <div class="caption-row original" id="originalCaption">
+                <!-- Original text will appear here -->
             </div>
             
-            <div class="menu-item selected" id="opt-off" onclick="setLang('Off')">
-                <div class="item-left"><span>Off</span></div>
-                <svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
-            </div>
-
-            <div class="menu-item" id="opt-en" onclick="setLang('English (auto-generated)')">
-                <div class="item-left"><span>English (auto-generated)</span></div>
-                <svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
-            </div>
-
-            <div class="menu-item" onclick="navTo('panel-translate')">
-                <div class="item-left"><span>Auto-translate</span></div>
-                <div class="item-right"><svg viewBox="0 0 24 24" width="20" height="20" fill="#aaa"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+            <div class="caption-row translated" id="translatedCaption">
+                <!-- Translated text will appear here -->
             </div>
         </div>
 
-        <!-- PANEL: LANGUAGE LIST -->
-        <div class="panel" id="panel-translate">
-            <div class="panel-header" onclick="navTo('panel-subtitles')">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-                <span>Choose language</span>
+        <div class="controls">
+            <button class="control-btn" id="micBtn" onclick="toggleMic()">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                </svg>
+                <span id="micText">Start Listening</span>
+            </button>
+            
+            <button class="control-btn" id="translateBtn" onclick="toggleTranslation()">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
+                </svg>
+                <span id="translateText">Enable Translation</span>
+            </button>
+        </div>
+
+        <div class="language-selector">
+            <div class="language-row">
+                <div class="language-group">
+                    <div class="language-label">Source Language (Speech Recognition)</div>
+                    <select id="sourceLanguage" onchange="changeSourceLanguage()">
+                        <option value="auto">Auto-detect (System Language)</option>
+                        <optgroup label="English">
+                            <option value="en-US">English (United States)</option>
+                            <option value="en-GB">English (United Kingdom)</option>
+                            <option value="en-AU">English (Australia)</option>
+                            <option value="en-CA">English (Canada)</option>
+                            <option value="en-IN">English (India)</option>
+                            <option value="en-IE">English (Ireland)</option>
+                            <option value="en-NZ">English (New Zealand)</option>
+                            <option value="en-ZA">English (South Africa)</option>
+                        </optgroup>
+                        <optgroup label="Spanish">
+                            <option value="es-ES">Spanish (Spain)</option>
+                            <option value="es-MX">Spanish (Mexico)</option>
+                            <option value="es-AR">Spanish (Argentina)</option>
+                            <option value="es-CO">Spanish (Colombia)</option>
+                            <option value="es-PE">Spanish (Peru)</option>
+                            <option value="es-VE">Spanish (Venezuela)</option>
+                            <option value="es-CL">Spanish (Chile)</option>
+                            <option value="es-US">Spanish (United States)</option>
+                        </optgroup>
+                        <optgroup label="French">
+                            <option value="fr-FR">French (France)</option>
+                            <option value="fr-CA">French (Canada)</option>
+                            <option value="fr-BE">French (Belgium)</option>
+                            <option value="fr-CH">French (Switzerland)</option>
+                        </optgroup>
+                        <optgroup label="German">
+                            <option value="de-DE">German (Germany)</option>
+                            <option value="de-AT">German (Austria)</option>
+                            <option value="de-CH">German (Switzerland)</option>
+                            <option value="de-BE">German (Belgium)</option>
+                            <option value="de-LU">German (Luxembourg)</option>
+                        </optgroup>
+                        <optgroup label="Portuguese">
+                            <option value="pt-BR">Portuguese (Brazil)</option>
+                            <option value="pt-PT">Portuguese (Portugal)</option>
+                        </optgroup>
+                        <optgroup label="Chinese">
+                            <option value="zh-CN">Chinese (Simplified, China)</option>
+                            <option value="zh-TW">Chinese (Traditional, Taiwan)</option>
+                            <option value="zh-HK">Chinese (Traditional, Hong Kong)</option>
+                            <option value="zh-SG">Chinese (Simplified, Singapore)</option>
+                        </optgroup>
+                        <optgroup label="Arabic">
+                            <option value="ar-SA">Arabic (Saudi Arabia)</option>
+                            <option value="ar-EG">Arabic (Egypt)</option>
+                            <option value="ar-AE">Arabic (United Arab Emirates)</option>
+                            <option value="ar-DZ">Arabic (Algeria)</option>
+                            <option value="ar-MA">Arabic (Morocco)</option>
+                        </optgroup>
+                        <optgroup label="Russian & Slavic">
+                            <option value="ru-RU">Russian (Russia)</option>
+                            <option value="uk-UA">Ukrainian (Ukraine)</option>
+                            <option value="pl-PL">Polish (Poland)</option>
+                            <option value="cs-CZ">Czech (Czech Republic)</option>
+                            <option value="sk-SK">Slovak (Slovakia)</option>
+                            <option value="sl-SI">Slovenian (Slovenia)</option>
+                            <option value="hr-HR">Croatian (Croatia)</option>
+                            <option value="sr-RS">Serbian (Serbia)</option>
+                            <option value="bg-BG">Bulgarian (Bulgaria)</option>
+                        </optgroup>
+                        <optgroup label="Scandinavian">
+                            <option value="sv-SE">Swedish (Sweden)</option>
+                            <option value="da-DK">Danish (Denmark)</option>
+                            <option value="no-NO">Norwegian (Norway)</option>
+                            <option value="nb-NO">Norwegian Bokmål (Norway)</option>
+                            <option value="nn-NO">Norwegian Nynorsk (Norway)</option>
+                            <option value="fi-FI">Finnish (Finland)</option>
+                            <option value="is-IS">Icelandic (Iceland)</option>
+                        </optgroup>
+                        <optgroup label="Japanese & Korean">
+                            <option value="ja-JP">Japanese (Japan)</option>
+                            <option value="ko-KR">Korean (South Korea)</option>
+                            <option value="ko-KP">Korean (North Korea)</option>
+                        </optgroup>
+                        <optgroup label="Southeast Asian">
+                            <option value="th-TH">Thai (Thailand)</option>
+                            <option value="vi-VN">Vietnamese (Vietnam)</option>
+                            <option value="id-ID">Indonesian (Indonesia)</option>
+                            <option value="ms-MY">Malay (Malaysia)</option>
+                            <option value="fil-PH">Filipino (Philippines)</option>
+                        </optgroup>
+                        <optgroup label="South Asian">
+                            <option value="hi-IN">Hindi (India)</option>
+                            <option value="bn-BD">Bengali (Bangladesh)</option>
+                            <option value="bn-IN">Bengali (India)</option>
+                            <option value="pa-IN">Punjabi (India)</option>
+                            <option value="ta-IN">Tamil (India)</option>
+                            <option value="te-IN">Telugu (India)</option>
+                            <option value="mr-IN">Marathi (India)</option>
+                            <option value="ur-PK">Urdu (Pakistan)</option>
+                        </optgroup>
+                        <optgroup label="Other European">
+                            <option value="it-IT">Italian (Italy)</option>
+                            <option value="nl-NL">Dutch (Netherlands)</option>
+                            <option value="nl-BE">Dutch (Belgium)</option>
+                            <option value="el-GR">Greek (Greece)</option>
+                            <option value="hu-HU">Hungarian (Hungary)</option>
+                            <option value="ro-RO">Romanian (Romania)</option>
+                            <option value="tr-TR">Turkish (Turkey)</option>
+                        </optgroup>
+                        <optgroup label="African">
+                            <option value="sw-KE">Swahili (Kenya)</option>
+                            <option value="sw-TZ">Swahili (Tanzania)</option>
+                            <option value="af-ZA">Afrikaans (South Africa)</option>
+                            <option value="am-ET">Amharic (Ethiopia)</option>
+                            <option value="yo-NG">Yoruba (Nigeria)</option>
+                        </optgroup>
+                        <optgroup label="Other Languages">
+                            <option value="he-IL">Hebrew (Israel)</option>
+                            <option value="fa-IR">Persian (Iran)</option>
+                            <option value="et-EE">Estonian (Estonia)</option>
+                            <option value="lv-LV">Latvian (Latvia)</option>
+                            <option value="lt-LT">Lithuanian (Lithuania)</option>
+                            <option value="ka-GE">Georgian (Georgia)</option>
+                            <option value="hy-AM">Armenian (Armenia)</option>
+                            <option value="sq-AL">Albanian (Albania)</option>
+                            <option value="mk-MK">Macedonian (North Macedonia)</option>
+                            <option value="bs-BA">Bosnian (Bosnia and Herzegovina)</option>
+                        </optgroup>
+                    </select>
+                </div>
+                
+                <div class="language-group">
+                    <div class="language-label">Translation Target</div>
+                    <select id="targetLanguage" onchange="changeTargetLanguage()">
+                        <option value="en">English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="zh">Chinese (Simplified)</option>
+                        <option value="zh-TW">Chinese (Traditional)</option>
+                        <option value="ja">Japanese</option>
+                        <option value="ko">Korean</option>
+                        <option value="ar">Arabic</option>
+                        <option value="ru">Russian</option>
+                        <option value="hi">Hindi</option>
+                        <option value="it">Italian</option>
+                        <option value="nl">Dutch</option>
+                        <option value="pl">Polish</option>
+                        <option value="tr">Turkish</option>
+                        <option value="sv">Swedish</option>
+                        <option value="da">Danish</option>
+                        <option value="fi">Finnish</option>
+                        <option value="no">Norwegian</option>
+                        <option value="cs">Czech</option>
+                        <option value="hu">Hungarian</option>
+                        <option value="el">Greek</option>
+                        <option value="ro">Romanian</option>
+                        <option value="th">Thai</option>
+                        <option value="vi">Vietnamese</option>
+                        <option value="id">Indonesian</option>
+                        <option value="ms">Malay</option>
+                        <option value="fil">Filipino</option>
+                        <option value="he">Hebrew</option>
+                        <option value="fa">Persian</option>
+                        <option value="bn">Bengali</option>
+                        <option value="uk">Ukrainian</option>
+                        <option value="bg">Bulgarian</option>
+                        <option value="hr">Croatian</option>
+                        <option value="sk">Slovak</option>
+                        <option value="sl">Slovenian</option>
+                        <option value="et">Estonian</option>
+                        <option value="lv">Latvian</option>
+                        <option value="lt">Lithuanian</option>
+                        <option value="sr">Serbian</option>
+                        <option value="is">Icelandic</option>
+                        <option value="mk">Macedonian</option>
+                        <option value="sq">Albanian</option>
+                        <option value="bs">Bosnian</option>
+                        <option value="ka">Georgian</option>
+                        <option value="hy">Armenian</option>
+                        <option value="sw">Swahili</option>
+                        <option value="af">Afrikaans</option>
+                        <option value="am">Amharic</option>
+                        <option value="yo">Yoruba</option>
+                    </select>
+                </div>
             </div>
-            <div class="scroll-view">
-                <!-- We will generate these to keep HTML clean -->
-                <div id="language-list"></div>
-            </div>
+        </div>
+
+        <div class="status" id="status">
+            Click "Start Listening" to begin
         </div>
     </div>
-</div>
 
 <script>
-    /** 
-     *  DYNAMIC LOGIC 
-     *  Handles Microphone input and Mock Translation
-     **/
-
-    // --- 1. STATE ---
-    const state = {
+    // App State
+    let state = {
         listening: false,
-        captionsEnabled: false,
-        currentLanguage: 'Off', // 'Off', 'English (auto-generated)', or 'Filipino', etc.
-        transcript: '',
-        interim: ''
+        translating: false,
+        sourceLanguage: 'auto',
+        targetLanguage: 'es',
+        recognition: null,
+        originalText: '',
+        translatedText: '',
+        interimText: ''
     };
 
-    // --- 2. ELEMENTS ---
-    const els = {
-        micBtn: document.getElementById('micBtn'),
-        ccBtn: document.getElementById('ccBtn'),
-        settingsBtn: document.getElementById('settingsBtn'),
-        settingsMenu: document.getElementById('settingsMenu'),
-        captionBox: document.getElementById('captionBox'),
-        captionText: document.getElementById('captionText'),
-        mainMenuLang: document.getElementById('main-menu-lang'),
-        langList: document.getElementById('language-list')
-    };
-
-    // --- 3. SPEECH RECOGNITION SETUP ---
-    // Note: Chrome requires webkit prefix
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    let recognition;
-
-    if (SpeechRecognition) {
-        recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US'; // We listen in English for this demo
-
-        recognition.onresult = (event) => {
-            let finalTranscript = '';
-            let interimTranscript = '';
-
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript;
-                } else {
-                    interimTranscript += event.results[i][0].transcript;
-                }
-            }
-
-            // Only update UI if captions are ON
-            if (state.captionsEnabled) {
-                renderCaptions(finalTranscript, interimTranscript);
-            }
-        };
-
-        recognition.onerror = (event) => {
-            console.error("Speech Error", event.error);
-        };
+    // Initialize on load
+    window.addEventListener('DOMContentLoaded', () => {
+        updateStatus();
+        updateButtons();
         
-        recognition.onend = () => {
-            // Auto-restart if we are supposed to be listening (Chrome stops it sometimes)
-            if (state.listening) recognition.start();
-        };
-    } else {
-        alert("Your browser does not support Web Speech API (Try Chrome/Edge).");
-    }
+        // Set default selections
+        document.getElementById('sourceLanguage').value = state.sourceLanguage;
+        document.getElementById('targetLanguage').value = state.targetLanguage;
+    });
 
-    // --- 4. MOCK TRANSLATION ENGINE ---
-    // Since we don't have a paid Google Translate API key, we simulate it for the UI.
-    const dictionaries = {
-        'Filipino': {
-            'hello': 'kamusta', 'world': 'mundo', 'is': 'ay', 'this': 'ito',
-            'programming': 'pagpoprograma', 'code': 'koda', 'tool': 'kasangkapan',
-            'video': 'bidyo', 'editor': 'patnugot', 'make': 'gumawa', 'good': 'maganda',
-            'great': 'magaling', 'language': 'wika', 'computer': 'kompyuter', 'love': 'mahal',
-            'cursor': 'turo', 'keyboard': 'teklado', 'screen': 'tabing', 'mouse': 'daga',
-            'why': 'bakit', 'how': 'paano', 'what': 'ano', 'when': 'kailan', 'you': 'ka',
-            'i': 'ako', 'me': 'ako', 'we': 'tayo', 'are': 'ay', 'the': 'ang'
-        },
-        'Spanish': {
-            'hello': 'hola', 'world': 'mundo', 'is': 'es', 'this': 'esto',
-            'programming': 'programación', 'code': 'código', 'tool': 'herramienta',
-            'video': 'vídeo', 'editor': 'editor', 'make': 'hacer', 'good': 'bueno',
-            'great': 'gran', 'language': 'idioma', 'computer': 'computadora', 'you': 'tú',
-            'the': 'el', 'a': 'un', 'and': 'y'
+    // Speech Recognition Functions
+    function toggleMic() {
+        if (state.listening) {
+            stopListening();
+        } else {
+            startListening();
         }
-    };
-
-    function translateText(text, lang) {
-        if (!dictionaries[lang]) return text; // No dictionary? Return original (or Lorem Ipsum)
-        
-        return text.split(' ').map(word => {
-            const cleanWord = word.toLowerCase().replace(/[^a-z0-9]/g, '');
-            const translated = dictionaries[lang][cleanWord];
-            // If we have a translation, use it. Match case roughly.
-            if (translated) {
-                return (word[0] === word[0].toUpperCase()) 
-                    ? translated.charAt(0).toUpperCase() + translated.slice(1) 
-                    : translated;
-            }
-            return word;
-        }).join(' ');
     }
 
-    // --- 5. RENDER LOGIC ---
-    function renderCaptions(final, interim) {
-        // Clear box if empty
-        if (!final && !interim) {
-            els.captionText.innerHTML = '';
+    function startListening() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (!SpeechRecognition) {
+            alert('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
             return;
         }
 
-        let displayFinal = final;
-        let displayInterim = interim;
-
-        // Apply "Auto-translate"
-        if (state.currentLanguage !== 'English (auto-generated)' && state.currentLanguage !== 'Off') {
-            displayFinal = translateText(final, state.currentLanguage);
-            displayInterim = translateText(interim, state.currentLanguage);
-        }
-
-        // DOM Update
-        els.captionText.innerHTML = `
-            ${displayFinal} 
-            <span class="interim">${displayInterim}</span>
-        `;
+        state.recognition = new SpeechRecognition();
+        state.recognition.continuous = true;
+        state.recognition.interimResults = true;
         
-        // Scroll to bottom logic if we were making a log, but for overlay we just replace text usually
-        // or keep last few lines. For this demo, we just dump the text.
-    }
-
-    // --- 6. MENU & UI INTERACTIONS ---
-    
-    // Toggle Mic
-    els.micBtn.addEventListener('click', () => {
-        state.listening = !state.listening;
-        els.micBtn.classList.toggle('mic-active', state.listening);
-        if (state.listening) {
-            recognition.start();
-            // Automatically turn on CC for better UX
-            if (!state.captionsEnabled) toggleCC();
+        // Set language - use auto or specific
+        if (state.sourceLanguage === 'auto') {
+            state.recognition.lang = navigator.language || 'en-US';
         } else {
-            recognition.stop();
-        }
-    });
-
-    // Toggle CC Visuals
-    els.ccBtn.addEventListener('click', toggleCC);
-
-    function toggleCC() {
-        state.captionsEnabled = !state.captionsEnabled;
-        els.ccBtn.classList.toggle('cc-active', state.captionsEnabled);
-        els.captionBox.classList.toggle('visible', state.captionsEnabled);
-
-        if (state.captionsEnabled) {
-            if (state.currentLanguage === 'Off') {
-                setLang('English (auto-generated)');
-            }
-        } else {
-            setLang('Off');
-        }
-    }
-
-    // Settings Menu Toggle
-    els.settingsBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        els.settingsMenu.classList.toggle('open');
-        if (els.settingsMenu.classList.contains('open')) {
-            navTo('panel-main'); // Reset to main
-        }
-    });
-
-    // Close menu when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!els.settingsMenu.contains(e.target) && e.target !== els.settingsBtn) {
-            els.settingsMenu.classList.remove('open');
-        }
-    });
-
-    // Panel Navigation
-    window.navTo = function(panelId) {
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-        document.getElementById(panelId).classList.add('active');
-    };
-
-    // Set Language
-    window.setLang = function(lang) {
-        state.currentLanguage = lang;
-        
-        // 1. Update Main Menu Label
-        els.mainMenuLang.textContent = lang;
-
-        // 2. Update Selection Checkmarks
-        document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('selected'));
-        
-        if (lang === 'Off') {
-            document.getElementById('opt-off').classList.add('selected');
-            state.captionsEnabled = false;
-            els.ccBtn.classList.remove('cc-active');
-            els.captionBox.classList.remove('visible');
-        } else if (lang === 'English (auto-generated)') {
-            document.getElementById('opt-en').classList.add('selected');
-            state.captionsEnabled = true;
-            els.ccBtn.classList.add('cc-active');
-            els.captionBox.classList.add('visible');
-        } else {
-            // It's a translation language
-            // Find in list and select
-            // (Simulated logic for this demo)
-            state.captionsEnabled = true;
-            els.ccBtn.classList.add('cc-active');
-            els.captionBox.classList.add('visible');
+            state.recognition.lang = state.sourceLanguage;
         }
 
-        // Close menu
-        els.settingsMenu.classList.remove('open');
-    };
-
-    // --- 7. POPULATE LANGUAGE LIST ---
-    const langs = ['Arabic', 'Chinese', 'Dutch', 'Filipino', 'French', 'German', 'Hindi', 'Italian', 'Japanese', 'Korean', 'Portuguese', 'Russian', 'Spanish'];
-    
-    langs.forEach(lang => {
-        const item = document.createElement('div');
-        item.className = 'menu-item';
-        item.innerHTML = `
-            <div class="item-left"><span>${lang}</span></div>
-            <svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
-        `;
-        item.onclick = () => {
-             // visually select this item
-             document.querySelectorAll('#language-list .menu-item').forEach(i => i.classList.remove('selected'));
-             item.classList.add('selected');
-             setLang(lang);
+        state.recognition.onstart = () => {
+            state.listening = true;
+            updateButtons();
+            updateStatus('Listening... Speak now');
         };
-        els.langList.appendChild(item);
-    });
 
+        state.recognition.onresult = (event) => {
+            let finalTranscript = '';
+            let interimTranscript = '';
+            
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript;
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+            
+            if (finalTranscript) {
+                state.originalText = finalTranscript;
+                updateCaptions();
+                translateText(finalTranscript);
+            } else if (interimTranscript) {
+                state.interimText = interimTranscript;
+                updateCaptions(true);
+            }
+        };
+
+        state.recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            updateStatus('Error: ' + event.error);
+            
+            if (event.error === 'not-allowed') {
+                alert('Microphone access is required. Please allow microphone permissions.');
+            }
+        };
+
+        state.recognition.onend = () => {
+            state.listening = false;
+            updateButtons();
+            updateStatus('Speech recognition ended');
+        };
+
+        try {
+            state.recognition.start();
+        } catch (error) {
+            console.error('Failed to start recognition:', error);
+            updateStatus('Failed to start listening');
+        }
+    }
+
+    function stopListening() {
+        if (state.recognition) {
+            state.recognition.stop();
+            state.recognition = null;
+        }
+        state.listening = false;
+        updateButtons();
+        updateStatus('Stopped listening');
+    }
+
+    function toggleTranslation() {
+        state.translating = !state.translating;
+        updateButtons();
+        
+        if (!state.translating) {
+            document.getElementById('translatedCaption').textContent = 'Translation disabled';
+        } else if (state.originalText) {
+            translateText(state.originalText);
+        }
+    }
+
+    function changeSourceLanguage() {
+        state.sourceLanguage = document.getElementById('sourceLanguage').value;
+        
+        // Restart recognition if it was running
+        if (state.listening && state.recognition) {
+            state.recognition.stop();
+            setTimeout(() => {
+                if (state.listening) {
+                    startListening();
+                }
+            }, 500);
+        }
+        
+        updateStatus('Source language changed to: ' + getLanguageName(state.sourceLanguage));
+    }
+
+    function changeTargetLanguage() {
+        state.targetLanguage = document.getElementById('targetLanguage').value;
+        
+        // Re-translate if we have text
+        if (state.translating && state.originalText) {
+            translateText(state.originalText);
+        }
+        
+        updateStatus('Translation target changed to: ' + getLanguageName(state.targetLanguage));
+    }
+
+    // Translation simulation (in real app, use an API like Google Translate)
+    async function translateText(text) {
+        if (!state.translating) return;
+        
+        // Simulate translation - in reality you'd call an API
+        const languages = {
+            'en': 'English', 'es': 'Spanish', 'fr': 'French', 'de': 'German',
+            'pt': 'Portuguese', 'zh': 'Chinese', 'ja': 'Japanese', 'ko': 'Korean',
+            'ru': 'Russian', 'ar': 'Arabic', 'hi': 'Hindi', 'it': 'Italian'
+        };
+        
+        const targetLang = languages[state.targetLanguage] || state.targetLanguage;
+        
+        // Simulate API delay
+        setTimeout(() => {
+            // This is where you'd integrate with a real translation API
+            // For demo, we'll just show a placeholder
+            state.translatedText = `[Translated to ${targetLang}]: ${text}`;
+            document.getElementById('translatedCaption').textContent = state.translatedText;
+        }, 500);
+    }
+
+    function updateCaptions(isInterim = false) {
+        const originalEl = document.getElementById('originalCaption');
+        
+        if (isInterim) {
+            originalEl.textContent = state.interimText + '...';
+        } else {
+            originalEl.textContent = state.originalText;
+        }
+    }
+
+    // UI Helper Functions
+    function updateButtons() {
+        const micBtn = document.getElementById('micBtn');
+        const micText = document.getElementById('micText');
+        const translateBtn = document.getElementById('translateBtn');
+        const translateText = document.getElementById('translateText');
+        
+        if (state.listening) {
+            micBtn.classList.add('active');
+            micText.textContent = 'Stop Listening';
+        } else {
+            micBtn.classList.remove('active');
+            micText.textContent = 'Start Listening';
+        }
+        
+        if (state.translating) {
+            translateBtn.classList.add('active');
+            translateText.textContent = 'Disable Translation';
+        } else {
+            translateBtn.classList.remove('active');
+            translateText.textContent = 'Enable Translation';
+        }
+    }
+
+    function updateStatus(message) {
+        const statusEl = document.getElementById('status');
+        
+        if (message) {
+            statusEl.textContent = message;
+            if (state.listening) {
+                statusEl.classList.add('active');
+            } else {
+                statusEl.classList.remove('active');
+            }
+        }
+    }
+
+    function getLanguageName(code) {
+        const select = code.includes('-') ? 
+            document.getElementById('sourceLanguage') : 
+            document.getElementById('targetLanguage');
+        
+        for (let option of select.options) {
+            if (option.value === code) {
+                return option.text.split('(')[0].trim();
+            }
+        }
+        return code;
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === ' ') {
+            e.preventDefault();
+            toggleMic();
+        }
+        if (e.ctrlKey && e.key === 't') {
+            e.preventDefault();
+            toggleTranslation();
+        }
+    });
 </script>
 </body>
 </html>
