@@ -13,6 +13,15 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
   const captions = useCallClosedCaptions();
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Debug logging
+  useEffect(() => {
+    console.log('🎤 Captions data:', captions);
+    console.log('🎤 Captions length:', captions?.length || 0);
+    if (captions && captions.length > 0) {
+      console.log('🎤 Latest caption:', captions[captions.length - 1]);
+    }
+  }, [captions]);
+
   // Auto-scroll to bottom when new captions arrive
   useEffect(() => {
     if (scrollRef.current) {
