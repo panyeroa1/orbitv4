@@ -3,6 +3,7 @@
 import { X, Mic, MicOff, Globe } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { deepgramService } from "@/lib/deepgram-service";
+import { useCallStateHooks } from "@stream-io/video-react-sdk";
 
 interface TranscriptionSidebarProps {
   onClose: () => void;
@@ -14,11 +15,25 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Stream SDK Hooks for Screen Share
+  const { useScreenShareState } = useCallStateHooks();
+  const { mediaStream: screenShareStream, isEnabled: isScreenSharing } = useScreenShareState();
+
+  // Handle Screen Share Audio Mixing
+  useEffect(() => {
+    if (isRecording && isScreenSharing && screenShareStream) {
+      // If screen sharing is active and we are recording, add the screen audio
+      deepgramService.addScreenShareAudio(screenShareStream);
+    } else {
+      // Otherwise ensure it's removed
+      deepgramService.removeScreenShareAudio();
+    }
+  }, [isRecording, isScreenSharing, screenShareStream]);
+
   useEffect(() => {
     // Subscribe to captions
     const unsubscribe = deepgramService.onCaption((caption) => {
-      // Only add final captions to avoid flickering, or handle interim logic if desired
-      // For this simple UI, we'll append final results
+      // Only add final captions to avoid flickering
       if (caption.isFinal) {
         setCaptions((prev) => [...prev, caption]);
       }
@@ -108,7 +123,8 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
         {isRecording && (
           <div className="flex items-center gap-2 text-xs text-green-400">
             <div className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
-            Listening to microphone...
+            <div className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
+            {isScreenSharing ? 'Listening (Mic + System Audio)...' : 'Listening to microphone...'}
           </div>
         )}
       </div>
