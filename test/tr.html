@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robust YouTube Captions UI</title>
+    <style>
+        /* --- RESET & VARIABLES --- */
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            --yt-menu-bg: rgba(28, 28, 28, 0.95);
+            --yt-text: #fff;
+            --yt-text-sec: #aaa;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Roboto', Arial, sans-serif; }
+        
+        body {
+            height: 100vh;
+            width: 100vw;
+            background: var(--bg-gradient);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+        }
+
+        /* --- DEBUG STATUS (To help troubleshoot) --- */
+        .debug-status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: rgba(255,255,255,0.5);
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        /* --- START OVERLAY (Crucial for Permissions) --- */
+        .start-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+        .start-btn {
+            padding: 15px 30px;
+            background: #f00;
+            color: white;
+            border: none;
+            font-size: 18px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .start-overlay.hidden { display: none; }
+
+        /* --- PLAYER UI --- */
+        .player-container {
+            width: 100%; height: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+        }
+
+        /* --- CAPTIONS --- */
+        .caption-window {
+            position: absolute;
+            bottom: 100px; left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(8, 8, 8, 0.75);
+            padding: 4px 12px;
+            border-radius: 2px;
+            font-size: 24px;
+            text-align: center;
+            color: #fff;
+            pointer-events: none;
+            display: none; /* Hidden until active */
+            max-width: 80%;
+        }
+        .caption-window.active { display: inline-block; }
+        .interim { color: #aaa; font-style: italic; }
+
+        /* --- CONTROLS --- */
+        .controls {
+            height: 60px;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 20px;
+        }
+        
+        .icon-btn {
+            background: none; border: none;
+            width: 48px; height: 48px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            position: relative;
+        }
+        .icon-btn:hover { background: rgba(255,255,255,0.1); }
+        .icon-btn svg { fill: white; width: 24px; height: 24px; }
+        
+        .mic-active svg { fill: #f00; }
+        .cc-active::after {
+            content: ''; position: absolute;
+            bottom: 12px; left: 14px; width: 20px; height: 2px;
+            background: #f00;
+        }
+
+        /* --- MENUS --- */
+        .settings-menu {
+            position: absolute;
+            bottom: 70px; right: 20px;
+            width: 320px;
+            max-height: 400px;
+            background: var(--yt-menu-bg);
+            border-radius: 12px;
+            padding: 8px 0;
+            display: none;
+            flex-direction: column;
+            backdrop-filter: blur(10px);
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            color: white;
+            font-size: 14px;
+        }
+        .settings-menu.open { display: flex; }
+        
+        .panel { display: none; width: 100%; height: 100%; flex-direction: column; }
+        .panel.active { display: flex; }
+        
+        .menu-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 16px;
+            cursor: pointer;
+        }
+        .menu-item:hover { background: rgba(255,255,255,0.1); }
+        
+        .panel-header {
+            padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: bold;
+        }
+        .panel-header:hover { background: rgba(255,255,255,0.1); }
+        
+        .scroll-area { overflow-y: auto; flex: 1; }
+        .scroll-area::-webkit-scrollbar { width: 6px; }
+        .scroll-area::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+
+        .check-icon { width: 16px; height: 16px; opacity: 0; }
+        .menu-item.selected .check-icon { opacity: 1; }
+        
+        .status-txt { color: #aaa; font-size: 12px; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Debug Output -->
+    <div class="debug-status" id="debugStatus">Status: Waiting...</div>
+
+    <!-- Permission Overlay -->
+    <div class="start-overlay" id="startOverlay">
+        <h2>YouTube Live Captions Demo</h2>
+        <p style="margin-top:10px; color:#ccc;">Requires Microphone Access</p>
+        <button class="start-btn" onclick="initApp()">Start Listening</button>
+    </div>
+
+    <!-- App UI -->
+    <div class="player-container">
+        <!-- Captions -->
+        <div class="caption-window" id="captionBox">
+            <span id="captionText"></span>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <!-- Mic -->
+            <button class="icon-btn" id="micBtn" onclick="toggleMic()">
+                <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            </button>
+            <!-- CC -->
+            <button class="icon-btn" id="ccBtn" onclick="toggleCC()">
+                <svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H5v-2h6v2zm0 4H5v-2h6v2zm8 0h-6v-2h6v2zm0-4h-6v-2h6v2z"/></svg>
+            </button>
+            <!-- Settings -->
+            <button class="icon-btn" id="settingsBtn" onclick="toggleSettings()">
+                <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+            </button>
+        </div>
+
+        <!-- SETTINGS POPUP -->
+        <div class="settings-menu" id="settingsMenu">
+            
+            <!-- PANEL: MAIN -->
+            <div class="panel active" id="p-main">
+                <!-- Source Lang -->
+                <div class="menu-item" onclick="nav('p-source')">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                        <span>Source Language</span>
+                    </div>
+                    <div class="status-txt" id="lblSource">Auto-detect</div>
+                </div>
+                
+                <!-- Audio Source -->
+                <div class="menu-item" onclick="nav('p-device')">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+                        <span>Input Device</span>
+                    </div>
+                    <div class="status-txt" id="lblDevice">Default</div>
+                </div>
+
+                <!-- Subtitles -->
+                <div class="menu-item" onclick="nav('p-subs')">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H5v-2h6v2zm0 4H5v-2h6v2zm8 0h-6v-2h6v2zm0-4h-6v-2h6v2z"/></svg>
+                        <span>Subtitles/CC</span>
+                    </div>
+                    <div class="status-txt" id="lblTarget">Off</div>
+                </div>
+            </div>
+
+            <!-- PANEL: SOURCE LANG -->
+            <div class="panel" id="p-source">
+                <div class="panel-header" onclick="nav('p-main')">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                    Source Language
+                </div>
+                <div class="scroll-area" id="listSource"></div>
+            </div>
+
+            <!-- PANEL: INPUT DEVICE -->
+            <div class="panel" id="p-device">
+                <div class="panel-header" onclick="nav('p-main')">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                    Input Device
+                </div>
+                <div class="scroll-area" id="listDevice"></div>
+            </div>
+
+             <!-- PANEL: SUBTITLES -->
+             <div class="panel" id="p-subs">
+                <div class="panel-header" onclick="nav('p-main')">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                    Subtitles/CC
+                </div>
+                <div class="menu-item selected" id="opt-off" onclick="setTarget('Off')">
+                    <span>Off</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+                </div>
+                <div class="menu-item" id="opt-cc" onclick="setTarget('Original (CC)')">
+                    <span>Original (CC)</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+                </div>
+                <div class="menu-item" onclick="nav('p-trans')">
+                    <span>Auto-translate</span> <span>&gt;</span>
+                </div>
+            </div>
+
+            <!-- PANEL: TRANSLATE -->
+            <div class="panel" id="p-trans">
+                <div class="panel-header" onclick="nav('p-subs')">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                    Translate to
+                </div>
+                <div class="scroll-area" id="listTarget"></div>
+            </div>
+
+        </div>
+    </div>
+
+<script>
+    // --- 1. CONFIGURATION ---
+    const langs = [
+        { code: navigator.language || 'en-US', name: 'Auto-detect (System)' },
+        { code: 'en-US', name: 'English (US)' },
+        { code: 'fil-PH', name: 'Filipino' },
+        { code: 'ceb-PH', name: 'Cebuano' },
+        { code: 'ilo-PH', name: 'Ilocano' },
+        { code: 'es-ES', name: 'Spanish' },
+        { code: 'fr-FR', name: 'French' },
+        { code: 'ja-JP', name: 'Japanese' },
+        { code: 'ko-KR', name: 'Korean' },
+        { code: 'zh-CN', name: 'Chinese (Simplified)' }
+    ];
+
+    const dict = {
+        'fil-PH': { 'hello': 'kamusta', 'world': 'mundo' },
+        'ceb-PH': { 'hello': 'kumusta', 'world': 'kalibutan' },
+        'ilo-PH': { 'hello': 'kablaaw', 'world': 'lubong' }
+    };
+
+    // --- 2. STATE ---
+    let state = {
+        listening: false,
+        captions: false,
+        sourceLang: langs[0].code,
+        targetLang: 'Off',
+        audioDevices: []
+    };
+
+    let recognition;
+    const debugEl = document.getElementById('debugStatus');
+
+    // --- 3. INITIALIZATION (CLICK REQUIRED) ---
+    async function initApp() {
+        document.getElementById('startOverlay').classList.add('hidden');
+        log('Initializing...');
+
+        // A. Setup Speech Rec
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) {
+            log('ERROR: Browser does not support WebSpeech API (Use Chrome).');
+            return;
+        }
+
+        recognition = new SR();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = state.sourceLang;
+
+        recognition.onstart = () => { 
+            state.listening = true; 
+            updateMicUI(true);
+            log('Listening... Speak now.');
+        };
+        
+        recognition.onend = () => { 
+            state.listening = false; 
+            updateMicUI(false);
+            log('Stopped. Click Mic to restart.');
+            // Auto restart if intended?
+            // if(state.listening) recognition.start(); // Careful with loops
+        };
+
+        recognition.onerror = (e) => {
+            log('Error: ' + e.error);
+            if(e.error === 'not-allowed') alert("Microphone blocked. Allow permission.");
+        };
+
+        recognition.onresult = (e) => {
+            let final = '', interim = '';
+            for (let i = e.resultIndex; i < e.results.length; ++i) {
+                if(e.results[i].isFinal) final += e.results[i][0].transcript;
+                else interim += e.results[i][0].transcript;
+            }
+            if(state.captions) render(final, interim);
+        };
+
+        // B. Get Devices
+        try {
+            await navigator.mediaDevices.getUserMedia({ audio: true }); // Request Perm
+            const devs = await navigator.mediaDevices.enumerateDevices();
+            state.audioDevices = devs.filter(d => d.kind === 'audioinput');
+            populateDevices();
+        } catch(err) {
+            log('Warning: Could not list devices. ' + err.message);
+        }
+
+        // C. Populate Menus
+        populateLangs();
+        
+        // Start listening immediately
+        try {
+            recognition.start();
+        } catch(e) { log('Already started?'); }
+    }
+
+    // --- 4. UI POPULATION ---
+    function populateLangs() {
+        // Source List
+        const srcList = document.getElementById('listSource');
+        langs.forEach(l => {
+            const div = document.createElement('div');
+            div.className = 'menu-item';
+            div.innerHTML = `<span>${l.name}</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
+            div.onclick = () => {
+                state.sourceLang = l.code;
+                document.getElementById('lblSource').innerText = l.name;
+                
+                // Restart with new lang
+                if(recognition) {
+                    recognition.stop();
+                    recognition.lang = l.code;
+                    setTimeout(() => { if(state.listening) recognition.start(); }, 500);
+                }
+                nav('p-main');
+            };
+            srcList.appendChild(div);
+        });
+
+        // Target List
+        const tgtList = document.getElementById('listTarget');
+        langs.forEach(l => {
+            const div = document.createElement('div');
+            div.className = 'menu-item';
+            div.innerHTML = `<span>${l.name}</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
+            div.onclick = () => {
+                setTarget(l.name);
+            };
+            tgtList.appendChild(div);
+        });
+    }
+
+    function populateDevices() {
+        const list = document.getElementById('listDevice');
+        list.innerHTML = '';
+        
+        // Add Default
+        addDevItem(list, 'Default', 'default');
+
+        state.audioDevices.forEach(d => {
+            let label = d.label || `Microphone ${d.deviceId.substr(0,4)}`;
+            addDevItem(list, label, d.deviceId);
+        });
+    }
+
+    function addDevItem(list, label, id) {
+        const div = document.createElement('div');
+        div.className = 'menu-item';
+        div.innerHTML = `<span>${label}</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
+        div.onclick = () => {
+            document.getElementById('lblDevice').innerText = label.substr(0,15)+'...';
+            log('Device selected: ' + label);
+            // Note: WebSpeechAPI does NOT support changing device ID programmatically.
+            // This UI mimics the selection, but the browser enforces the Default Mic.
+            alert("Note: Web Speech API uses system default. Please change OS Sound Settings to use this device.");
+            nav('p-main');
+        };
+        list.appendChild(div);
+    }
+
+    // --- 5. LOGIC ---
+    function toggleMic() {
+        if(!recognition) return;
+        if(state.listening) recognition.stop();
+        else {
+            try { recognition.start(); } 
+            catch(e) { log('Start err'); }
+        }
+    }
+
+    function toggleCC() {
+        state.captions = !state.captions;
+        if(state.captions && state.targetLang === 'Off') setTarget('Original (CC)');
+        else if(!state.captions) setTarget('Off');
+        updateCCUI();
+    }
+
+    function setTarget(val) {
+        state.targetLang = val;
+        document.getElementById('lblTarget').innerText = val;
+        state.captions = (val !== 'Off');
+        
+        // Update visual checks
+        document.querySelectorAll('#p-subs .menu-item').forEach(el => el.classList.remove('selected'));
+        if(val === 'Off') document.getElementById('opt-off').classList.add('selected');
+        else if(val === 'Original (CC)') document.getElementById('opt-cc').classList.add('selected');
+        
+        updateCCUI();
+        document.getElementById('settingsMenu').classList.remove('open');
+    }
+
+    function render(final, interim) {
+        if(!final && !interim) { document.getElementById('captionText').innerHTML = ''; return; }
+        
+        let dF = final, dI = interim;
+
+        // Simple Translation Mock
+        if(state.targetLang !== 'Original (CC)' && state.targetLang !== 'Off') {
+            // Check if we have a dictionary for the TARGET language
+            // (Mapping En -> Target)
+            const targetCode = langs.find(l => l.name === state.targetLang)?.code;
+            if(targetCode && dict[targetCode]) {
+                dF = translate(final, dict[targetCode]);
+                dI = translate(interim, dict[targetCode]);
+            }
+        }
+
+        document.getElementById('captionText').innerHTML = `${dF} <span class="interim">${dI}</span>`;
+    }
+
+    function translate(text, mapping) {
+        return text.split(' ').map(w => {
+            const clean = w.toLowerCase().trim();
+            return mapping[clean] || w;
+        }).join(' ');
+    }
+
+    // --- 6. HELPERS ---
+    function log(msg) { debugEl.innerText = 'Status: ' + msg; console.log(msg); }
+    function nav(id) {
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+    function updateMicUI(active) {
+        document.getElementById('micBtn').classList.toggle('mic-active', active);
+    }
+    function updateCCUI() {
+        document.getElementById('ccBtn').classList.toggle('cc-active', state.captions);
+        document.getElementById('captionBox').classList.toggle('active', state.captions);
+    }
+    function toggleSettings() {
+        const menu = document.getElementById('settingsMenu');
+        menu.classList.toggle('open');
+        if(menu.classList.contains('open')) nav('p-main');
+    }
+
+</script>
+</body>
+</html>

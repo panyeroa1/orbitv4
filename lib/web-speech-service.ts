@@ -153,6 +153,10 @@ export class WebSpeechService {
   private emitError(error: string) {
     this.errorListeners.forEach(cb => cb(error));
   }
+
+  isActive() {
+    return this.isListening;
+  }
 }
 
 export const webSpeechService = new WebSpeechService();

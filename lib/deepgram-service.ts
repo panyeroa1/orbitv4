@@ -58,7 +58,7 @@ export class DeepgramService {
       // 2. Open WebSocket
       // Updated with user-requested parameters: language detection, entities, sentiment, etc.
       const queryParams = new URLSearchParams({
-        model: 'nova-3',
+        model: 'nova-2',
         smart_format: 'true',
         interim_results: 'true',
         diarize: 'true',

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Full Language Support</title>
+    <style>
+        /* --- VARIABLES & RESET --- */
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            --yt-menu-bg: rgba(28, 28, 28, 0.98);
+            --caption-bg: rgba(8, 8, 8, 0.85);
+            --font-family: 'Roboto', Arial, sans-serif;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-family); }
+        
+        body {
+            height: 100vh; width: 100vw;
+            background: var(--bg-gradient);
+            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+            user-select: none;
+        }
+
+        /* --- OVERLAY (Permissions) --- */
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 2000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; transition: opacity 0.5s;
+        }
+        .overlay.hidden { opacity: 0; pointer-events: none; }
+        .start-btn {
+            margin-top: 20px; padding: 12px 30px;
+            background: #ff0000; color: white; border: none;
+            font-size: 16px; border-radius: 2px; cursor: pointer; text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        /* --- 2-ROW CAPTION CONTAINER (The specific request) --- */
+        .caption-window {
+            position: absolute; 
+            bottom: 100px; 
+            left: 50%;
+            transform: translateX(-50%);
+            width: auto;
+            max-width: 800px;
+            pointer-events: none;
+            display: none; 
+            flex-direction: column;
+            align-items: center;
+        }
+        .caption-window.active { display: flex; }
+
+        .caption-box {
+            background-color: var(--caption-bg);
+            color: #fff;
+            padding: 2px 12px;
+            border-radius: 4px;
+            font-size: 26px; /* Big clear text */
+            line-height: 1.5em; /* Define line height */
+            text-align: center;
+            text-shadow: 0 0 2px #000;
+            
+            /* --- LOGIC FOR 2 ROWS ONLY --- */
+            height: 3em; /* Exactly 2 lines (1.5em * 2) */
+            overflow: hidden; /* Hide anything beyond 2 lines */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* Keep text pushed to bottom so new text appears */
+        }
+
+        .caption-content {
+            /* This ensures words wrap naturally */
+            word-wrap: break-word; 
+        }
+
+        .interim { color: #ccc; }
+
+        /* --- CONTROLS --- */
+        .controls {
+            width: 100%; height: 60px;
+            position: absolute; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex; align-items: center; justify-content: flex-end;
+            padding: 0 24px; z-index: 100;
+        }
+        
+        .icon-btn {
+            background: none; border: none;
+            width: 48px; height: 48px; border-radius: 50%;
+            cursor: pointer; margin-left: 8px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .icon-btn:hover { background: rgba(255,255,255,0.1); }
+        .icon-btn svg { fill: white; width: 24px; height: 24px; }
+        
+        .mic-active svg { fill: #f00; filter: drop-shadow(0 0 5px #f00); }
+        .cc-active::after {
+            content: ''; position: absolute;
+            bottom: 12px; left: 14px; width: 20px; height: 2px;
+            background: #f00;
+        }
+
+        /* --- SETTINGS MENU --- */
+        .settings-menu {
+            position: absolute; bottom: 70px; right: 20px;
+            width: 340px; 
+            max-height: 500px;
+            background: var(--yt-menu-bg);
+            border-radius: 12px; padding: 8px 0;
+            display: none; flex-direction: column;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+            color: white; font-size: 14px;
+            z-index: 200; overflow: hidden;
+        }
+        .settings-menu.open { display: flex; }
+        
+        .panel { display: none; width: 100%; height: 100%; flex-direction: column; }
+        .panel.active { display: flex; }
+        
+        .menu-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 16px; cursor: pointer; min-height: 40px;
+        }
+        .menu-item:hover { background: rgba(255,255,255,0.1); }
+        
+        .panel-header {
+            padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex; align-items: center; gap: 10px; cursor: pointer;
+            font-size: 15px; font-weight: 500;
+            border-top-left-radius: 12px; border-top-right-radius: 12px;
+        }
+        .panel-header:hover { background: rgba(255,255,255,0.1); }
+        
+        .scroll-area { overflow-y: auto; flex: 1; padding-bottom: 10px; }
+        .scroll-area::-webkit-scrollbar { width: 6px; }
+        .scroll-area::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+
+        .check-icon { width: 18px; height: 18px; opacity: 0; }
+        .menu-item.selected .check-icon { opacity: 1; }
+        .val-text { color: #aaa; font-size: 12px; display: flex; align-items: center; gap: 5px; }
+
+    </style>
+</head>
+<body>
+
+    <!-- STARTUP SCREEN -->
+    <div class="overlay" id="overlay">
+        <h2>YouTube Live Captions</h2>
+        <p style="color:#ccc; margin-top:5px; font-size: 14px;">Full Language Support & 2-Row Layout</p>
+        <button class="start-btn" onclick="init()">Launch Player</button>
+    </div>
+
+    <!-- CAPTION AREA -->
+    <div class="caption-window" id="captionWindow">
+        <div class="caption-box">
+            <!-- Text goes here. CSS ensures 2 rows max -->
+            <span id="captionContent" class="caption-content"></span>
+        </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="controls">
+        <button class="icon-btn" id="micBtn" onclick="toggleMic()" title="Toggle Microphone">
+            <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+        </button>
+        <button class="icon-btn" id="ccBtn" onclick="toggleCC()" title="Subtitles/CC">
+            <svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H5v-2h6v2zm0 4H5v-2h6v2zm8 0h-6v-2h6v2zm0-4h-6v-2h6v2z"/></svg>
+        </button>
+        <button class="icon-btn" id="settingsBtn" onclick="toggleSettings()" title="Settings">
+            <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        </button>
+    </div>
+
+    <!-- SETTINGS MENU -->
+    <div class="settings-menu" id="settingsMenu">
+        
+        <!-- Panel 1: Main -->
+        <div class="panel active" id="p-main">
+            <div class="menu-item" onclick="nav('p-source')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                    <span>Original Language</span>
+                </div>
+                <div class="val-text" id="lblSource">Auto-detect</div>
+            </div>
+            <div class="menu-item" onclick="nav('p-subs')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-8 7H5v-2h6v2zm0 4H5v-2h6v2zm8 0h-6v-2h6v2zm0-4h-6v-2h6v2z"/></svg>
+                    <span>Subtitles/CC</span>
+                </div>
+                <div class="val-text" id="lblTarget">Off</div>
+            </div>
+        </div>
+
+        <!-- Panel 2: Source Language List (Full) -->
+        <div class="panel" id="p-source">
+            <div class="panel-header" onclick="nav('p-main')">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                Original Language
+            </div>
+            <div class="scroll-area" id="listSource"></div>
+        </div>
+
+        <!-- Panel 3: Subtitle Options -->
+        <div class="panel" id="p-subs">
+            <div class="panel-header" onclick="nav('p-main')">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                Subtitles/CC
+            </div>
+            <div class="menu-item" id="opt-off" onclick="setTarget('Off')">
+                <span>Off</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+            </div>
+            <div class="menu-item" id="opt-orig" onclick="setTarget('Original (CC)')">
+                <span>Original (CC)</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+            </div>
+            <div class="menu-item" onclick="nav('p-auto')">
+                <span>Auto-translate</span><div class="val-text">&gt;</div>
+            </div>
+        </div>
+
+        <!-- Panel 4: Translation Languages (Full) -->
+        <div class="panel" id="p-auto">
+            <div class="panel-header" onclick="nav('p-subs')">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                Translate to
+            </div>
+            <div class="scroll-area" id="listTarget"></div>
+        </div>
+
+    </div>
+
+<script>
+    /* --- DATA: FULL LANGUAGE LIST --- */
+    // Used for both Source (Speech Recognition Codes) and Target (Mock Translation)
+    const fullLanguages = [
+        {name: "Afrikaans", code: "af-ZA"}, {name: "Albanian", code: "sq-AL"}, {name: "Amharic", code: "am-ET"}, {name: "Arabic", code: "ar-SA"}, 
+        {name: "Armenian", code: "hy-AM"}, {name: "Azerbaijani", code: "az-AZ"}, {name: "Basque", code: "eu-ES"}, {name: "Bengali", code: "bn-BD"}, 
+        {name: "Bosnian", code: "bs-BA"}, {name: "Bulgarian", code: "bg-BG"}, {name: "Burmese", code: "my-MM"}, {name: "Catalan", code: "ca-ES"}, 
+        {name: "Cebuano", code: "ceb-PH"}, {name: "Chinese (Simplified)", code: "zh-CN"}, {name: "Chinese (Traditional)", code: "zh-TW"}, 
+        {name: "Croatian", code: "hr-HR"}, {name: "Czech", code: "cs-CZ"}, {name: "Danish", code: "da-DK"}, {name: "Dutch", code: "nl-NL"}, 
+        {name: "English (US)", code: "en-US"}, {name: "English (UK)", code: "en-GB"}, {name: "Esperanto", code: "eo"}, {name: "Estonian", code: "et-EE"}, 
+        {name: "Filipino", code: "fil-PH"}, {name: "Finnish", code: "fi-FI"}, {name: "French", code: "fr-FR"}, {name: "Galician", code: "gl-ES"}, 
+        {name: "Georgian", code: "ka-GE"}, {name: "German", code: "de-DE"}, {name: "Greek", code: "el-GR"}, {name: "Gujarati", code: "gu-IN"}, 
+        {name: "Haitian Creole", code: "ht-HT"}, {name: "Hausa", code: "ha-NG"}, {name: "Hebrew", code: "he-IL"}, {name: "Hindi", code: "hi-IN"}, 
+        {name: "Hmong", code: "hmn"}, {name: "Hungarian", code: "hu-HU"}, {name: "Icelandic", code: "is-IS"}, {name: "Igbo", code: "ig-NG"}, 
+        {name: "Ilocano", code: "ilo-PH"}, {name: "Indonesian", code: "id-ID"}, {name: "Irish", code: "ga-IE"}, {name: "Italian", code: "it-IT"}, 
+        {name: "Japanese", code: "ja-JP"}, {name: "Javanese", code: "jv-ID"}, {name: "Kannada", code: "kn-IN"}, {name: "Kazakh", code: "kk-KZ"}, 
+        {name: "Khmer", code: "km-KH"}, {name: "Korean", code: "ko-KR"}, {name: "Lao", code: "lo-LA"}, {name: "Latin", code: "la"}, 
+        {name: "Latvian", code: "lv-LV"}, {name: "Lithuanian", code: "lt-LT"}, {name: "Macedonian", code: "mk-MK"}, {name: "Malagasy", code: "mg-MG"}, 
+        {name: "Malay", code: "ms-MY"}, {name: "Malayalam", code: "ml-IN"}, {name: "Maltese", code: "mt-MT"}, {name: "Maori", code: "mi-NZ"}, 
+        {name: "Marathi", code: "mr-IN"}, {name: "Mongolian", code: "mn-MN"}, {name: "Nepali", code: "ne-NP"}, {name: "Norwegian", code: "no-NO"}, 
+        {name: "Nyanja", code: "ny-MW"}, {name: "Pashto", code: "ps-AF"}, {name: "Persian", code: "fa-IR"}, {name: "Polish", code: "pl-PL"}, 
+        {name: "Portuguese", code: "pt-PT"}, {name: "Portuguese (Brazil)", code: "pt-BR"}, {name: "Punjabi", code: "pa-IN"}, {name: "Romanian", code: "ro-RO"}, 
+        {name: "Russian", code: "ru-RU"}, {name: "Samoan", code: "sm-WS"}, {name: "Scots Gaelic", code: "gd-GB"}, {name: "Serbian", code: "sr-RS"}, 
+        {name: "Sesotho", code: "st-LS"}, {name: "Shona", code: "sn-ZW"}, {name: "Sindhi", code: "sd-PK"}, {name: "Sinhala", code: "si-LK"}, 
+        {name: "Slovak", code: "sk-SK"}, {name: "Slovenian", code: "sl-SI"}, {name: "Somali", code: "so-SO"}, {name: "Spanish", code: "es-ES"}, 
+        {name: "Sundanese", code: "su-ID"}, {name: "Swahili", code: "sw-KE"}, {name: "Swedish", code: "sv-SE"}, {name: "Tajik", code: "tg-TJ"}, 
+        {name: "Tamil", code: "ta-IN"}, {name: "Telugu", code: "te-IN"}, {name: "Thai", code: "th-TH"}, {name: "Turkish", code: "tr-TR"}, 
+        {name: "Ukrainian", code: "uk-UA"}, {name: "Urdu", code: "ur-PK"}, {name: "Uzbek", code: "uz-UZ"}, {name: "Vietnamese", code: "vi-VN"}, 
+        {name: "Welsh", code: "cy-GB"}, {name: "Xhosa", code: "xh-ZA"}, {name: "Yiddish", code: "yi"}, {name: "Yoruba", code: "yo-NG"}, {name: "Zulu", code: "zu-ZA"}
+    ];
+
+    /* --- STATE --- */
+    let state = {
+        listening: false,
+        captions: false,
+        sourceCode: navigator.language || 'en-US',
+        sourceName: 'Auto-detect',
+        targetLang: 'Off', // 'Off', 'Original (CC)', or a Language Name e.g. "Spanish"
+        buffer: [] // Keeps track of words for the 2-row logic
+    };
+
+    let recognition;
+
+    /* --- INIT --- */
+    function init() {
+        document.getElementById('overlay').classList.add('hidden');
+        
+        // Populate Lists
+        const srcList = document.getElementById('listSource');
+        const tgtList = document.getElementById('listTarget');
+        
+        // Add Auto-detect to Source
+        let autoItem = document.createElement('div');
+        autoItem.className = 'menu-item selected';
+        autoItem.innerHTML = `<span>Auto-detect</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
+        autoItem.onclick = () => { setSource('Auto-detect', navigator.language || 'en-US', autoItem); };
+        srcList.appendChild(autoItem);
+
+        fullLanguages.forEach(l => {
+            // Populate Source
+            let sItem = document.createElement('div');
+            sItem.className = 'menu-item';
+            sItem.innerHTML = `<span>${l.name}</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
+            sItem.onclick = () => { setSource(l.name, l.code, sItem); };
+            srcList.appendChild(sItem);
+
+            // Populate Target
+            let tItem = document.createElement('div');
+            tItem.className = 'menu-item';
+            tItem.innerHTML = `<span>${l.name}</span><svg class="check-icon" viewBox="0 0 24 24" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>`;
+            tItem.onclick = () => { setTarget(l.name); };
+            tgtList.appendChild(tItem);
+        });
+
+        startRecognition();
+    }
+
+    function startRecognition() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if(!SR) return alert("Please use Chrome or Edge.");
+        
+        if(recognition) recognition.stop();
+        
+        recognition = new SR();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = state.sourceCode;
+
+        recognition.onstart = () => {
+            state.listening = true;
+            document.getElementById('micBtn').classList.add('mic-active');
+        };
+        recognition.onend = () => {
+            state.listening = false;
+            document.getElementById('micBtn').classList.remove('mic-active');
+        };
+        recognition.onresult = processResult;
+
+        recognition.start();
+    }
+
+    /* --- THE 2-ROW CAPTION LOGIC --- */
+    // This logic mimics the specific "fill first, then second, then scroll" behavior
+    // by managing a text buffer and checking container height.
+    function processResult(event) {
+        if(!state.captions) return;
+
+        let final = '', interim = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) final += event.results[i][0].transcript;
+            else interim += event.results[i][0].transcript;
+        }
+
+        // Apply "Mock" Translation if needed
+        if(state.targetLang !== 'Off' && state.targetLang !== 'Original (CC)') {
+            final = mockTranslate(final, state.targetLang);
+            interim = mockTranslate(interim, state.targetLang);
+        }
+
+        renderTwoRows(final, interim);
+    }
+
+    // A persistent text variable to hold the "committed" lines
+    let committedText = ""; 
+
+    function renderTwoRows(finalChunk, interimChunk) {
+        const el = document.getElementById('captionContent');
+        const box = document.querySelector('.caption-box');
+        
+        // If we have final text, append it to our committed history
+        if (finalChunk) {
+            committedText += (committedText ? " " : "") + finalChunk;
+        }
+
+        // Combine committed + interim for display
+        let fullDisplay = committedText + (interimChunk ? " " + interimChunk : "");
+        
+        // Set text
+        el.innerHTML = fullDisplay + (interimChunk ? ` <span class="interim">${interimChunk}</span>` : "");
+        el.textContent = fullDisplay; // Plain text for checking wrapping
+
+        // Highlight interim in DOM
+        if (interimChunk) {
+             const words = fullDisplay.split(" ");
+             // This simple logic rebuilds HTML to gray out the last few words corresponding to interim
+             // For strict 2-row logic, plain text replacement is safer to calculate height, 
+             // but let's just stick to plain text logic for overflow, then render HTML.
+             el.innerHTML = committedText + ` <span class="interim">${interimChunk}</span>`;
+        } else {
+             el.innerHTML = committedText;
+        }
+
+        // --- OVERFLOW LOGIC ---
+        // The container .caption-box has fixed height (3em).
+        // If scrollHeight > clientHeight, we have exceeded 2 lines.
+        // We must chop words off the beginning of 'committedText' until it fits.
+        
+        while (box.scrollHeight > box.clientHeight) {
+            // Find first space and slice
+            const spaceIdx = committedText.indexOf(' ');
+            if (spaceIdx > -1) {
+                committedText = committedText.slice(spaceIdx + 1);
+            } else {
+                // One giant word? Just clear it to be safe or break it.
+                committedText = ""; 
+            }
+            
+            // Re-render to check height again
+            el.innerHTML = committedText + (interimChunk ? ` <span class="interim">${interimChunk}</span>` : "");
+        }
+    }
+
+    /* --- MOCK TRANSLATION ENGINE --- */
+    // Simulates visual translation for 100+ languages without an API
+    function mockTranslate(text, langName) {
+        if(!text) return "";
+        
+        // Simple word map for demo purposes
+        const basic = {
+            'Spanish': {'hello':'hola', 'world':'mundo', 'is':'es', 'a':'un'},
+            'Filipino': {'hello':'kamusta', 'world':'mundo', 'is':'ay', 'a':'ang'},
+            'Cebuano': {'hello':'kumusta', 'world':'kalibutan', 'is':'kay'},
+            'French': {'hello':'bonjour', 'world':'monde', 'is':'est', 'a':'un'},
+            'German': {'hello':'hallo', 'world':'welt', 'is':'ist', 'a':'ein'}
+        };
+        
+        return text.split(' ').map(word => {
+            const clean = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+            
+            // 1. Check basic dictionary
+            if(basic[langName] && basic[langName][clean]) return basic[langName][clean];
+
+            // 2. Algorithmic Transformation (The "Fake" Translator)
+            // This makes the text look different based on the language name hash
+            let transformed = word;
+            
+            if(['Spanish', 'Italian', 'Portuguese'].some(x=>langName.includes(x))) {
+                if(!/[aeiou]$/.test(clean) && clean.length > 3) transformed += 'o';
+            } else if(['Filipino', 'Cebuano', 'Ilocano'].some(x=>langName.includes(x))) {
+                transformed = transformed.replace('c','k').replace('f','p').replace('v','b');
+            } else if(langName.includes('German') || langName.includes('Dutch')) {
+                if(clean.length > 4) transformed = 'ge' + transformed;
+            } else {
+                // General "foreign" look for others
+                // Just swap some vowels for visual difference
+                if(clean.length % 2 === 0) transformed = transformed.replace('e', 'a');
+            }
+
+            return transformed;
+        }).join(' ');
+    }
+
+    /* --- UI NAVIGATION --- */
+    function setSource(name, code, element) {
+        state.sourceName = name;
+        state.sourceCode = code;
+        document.getElementById('lblSource').innerText = name;
+        
+        // Update checkmarks
+        document.querySelectorAll('#p-source .menu-item').forEach(i => i.classList.remove('selected'));
+        if(element) element.classList.add('selected');
+
+        // Restart Rec
+        if(recognition) {
+            recognition.stop();
+            recognition.lang = code;
+            setTimeout(() => { if(state.listening) recognition.start(); }, 500);
+        }
+        nav('p-main');
+    }
+
+    function setTarget(val) {
+        state.targetLang = val;
+        state.captions = (val !== 'Off');
+        document.getElementById('lblTarget').innerText = val;
+
+        // Update main menu checkmarks
+        document.querySelectorAll('#p-subs .menu-item').forEach(i => i.classList.remove('selected'));
+        
+        if(val === 'Off') document.getElementById('opt-off').classList.add('selected');
+        else if(val === 'Original (CC)') document.getElementById('opt-orig').classList.add('selected');
+        
+        updateCaptionsVisibility();
+        document.getElementById('settingsMenu').classList.remove('open');
+    }
+
+    function updateCaptionsVisibility() {
+        document.getElementById('ccBtn').classList.toggle('cc-active', state.captions);
+        document.getElementById('captionWindow').classList.toggle('active', state.captions);
+        if(!state.captions) {
+            // Clear text when turned off
+            committedText = "";
+            document.getElementById('captionContent').innerHTML = "";
+        }
+    }
+
+    function toggleMic() {
+        if(state.listening) recognition.stop();
+        else recognition.start();
+    }
+
+    function toggleCC() {
+        if(state.captions) setTarget('Off');
+        else setTarget('Original (CC)');
+    }
+
+    function toggleSettings() {
+        const m = document.getElementById('settingsMenu');
+        m.classList.toggle('open');
+        if(m.classList.contains('open')) nav('p-main');
+    }
+
+    window.nav = function(id) {
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    };
+
+</script>
+</body>
+</html>
