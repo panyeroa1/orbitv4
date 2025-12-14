@@ -133,6 +133,7 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
             Speech Language
           </label>
           <select
+            aria-label="Select speech language"
             value={selectedLanguage}
             onChange={handleLanguageChange}
             className="w-full rounded-md bg-[#19232D] px-3 py-2 text-sm text-white"
@@ -153,6 +154,7 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
             Auto-Translate To
           </label>
           <select
+            aria-label="Select translation language"
             value={translateTo || ''}
             onChange={handleTranslateChange}
             className="w-full rounded-md bg-[#19232D] px-3 py-2 text-sm text-white"
