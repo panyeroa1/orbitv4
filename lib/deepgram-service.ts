@@ -102,8 +102,11 @@ export class DeepgramService {
         console.error('Deepgram WebSocket error:', error);
       };
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to start Deepgram service:', error);
+      if (error.message.includes('API key')) {
+        throw new Error('Invalid or missing API Key');
+      }
       throw error;
     }
   }

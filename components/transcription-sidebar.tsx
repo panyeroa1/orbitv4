@@ -144,8 +144,8 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
           webSpeechService.start();
         }
         setIsRecording(true);
-      } catch (err) {
-        setError('Failed to start transcription. Check permissions.');
+      } catch (err: any) {
+        setError(err.message || 'Failed to start transcription.');
         console.error(err);
       }
     }
