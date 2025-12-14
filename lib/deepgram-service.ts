@@ -49,7 +49,25 @@ export class DeepgramService {
 
       if (!key) throw new Error('No Deepgram API key found');
 
-      const url = `wss://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&interim_results=true&diarize=true&endpointing=300`;
+      // 2. Open WebSocket
+      // Updated with user-requested parameters: language detection, entities, sentiment, etc.
+      const queryParams = new URLSearchParams({
+        model: 'nova-3',
+        smart_format: 'true',
+        interim_results: 'true',
+        diarize: 'true',
+        endpointing: '300',
+        // New features requested:
+        detect_language: 'true',
+        detect_entities: 'true',
+        sentiment: 'true',
+        punctuate: 'true',
+        paragraphs: 'true',
+        utterances: 'true', 
+        utt_split: '0.8'
+      });
+
+      const url = `wss://api.deepgram.com/v1/listen?${queryParams.toString()}`;
       this.socket = new WebSocket(url, ['token', key]);
 
       this.socket.onopen = () => {

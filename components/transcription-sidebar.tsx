@@ -1,28 +1,31 @@
 "use client";
 
-import { X, Mic, MicOff, Globe } from "lucide-react";
+import { X, Mic, MicOff, Globe, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { deepgramService } from "@/lib/deepgram-service";
+import { webSpeechService } from "@/lib/web-speech-service";
 import { useCallStateHooks } from "@stream-io/video-react-sdk";
 
 interface TranscriptionSidebarProps {
   onClose: () => void;
 }
 
+type TranscriptionEngine = 'pro' | 'beta';
+
 export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => {
   const [captions, setCaptions] = useState<{ text: string; speaker: string; timestamp: number }[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [engine, setEngine] = useState<TranscriptionEngine>('pro'); // Default to Deepgram (Pro)
+  const [interimCaption, setInterimCaption] = useState<{ text: string; speaker: string } | null>(null);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Stream SDK Hooks for Screen Share
   const { useScreenShareState } = useCallStateHooks();
   const { mediaStream: screenShareStream, isEnabled: isScreenSharing } = useScreenShareState();
-
-  // State for interim results and devices
-  const [interimCaption, setInterimCaption] = useState<{ text: string; speaker: string } | null>(null);
-  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
 
   // Fetch devices on mount
   useEffect(() => {
@@ -34,20 +37,23 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
     });
   }, []);
 
-  // Handle Screen Share Audio Mixing
+  // Handle Screen Share Audio Mixing (Deepgram Only)
   useEffect(() => {
-    if (isRecording && isScreenSharing && screenShareStream) {
-      // If screen sharing is active and we are recording, add the screen audio
-      deepgramService.addScreenShareAudio(screenShareStream);
-    } else {
-      // Otherwise ensure it's removed
-      deepgramService.removeScreenShareAudio();
+    if (engine === 'pro') {
+      if (isRecording && isScreenSharing && screenShareStream) {
+        // If screen sharing is active and we are recording, add the screen audio
+        deepgramService.addScreenShareAudio(screenShareStream);
+      } else {
+        // Otherwise ensure it's removed
+        deepgramService.removeScreenShareAudio();
+      }
     }
-  }, [isRecording, isScreenSharing, screenShareStream]);
+  }, [isRecording, isScreenSharing, screenShareStream, engine]);
 
   useEffect(() => {
-    // Subscribe to captions
-    const unsubscribe = deepgramService.onCaption((caption) => {
+    // Deepgram Subscription
+    const unsubscribeDeepgram = deepgramService.onCaption((caption) => {
+      if (engine !== 'pro') return; // Ignore if not active engine
       // Only add final captions to avoid flickering
       if (caption.isFinal) {
         setCaptions((prev) => [...prev, {
@@ -61,13 +67,28 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
       }
     });
 
-    return () => {
-      unsubscribe();
-      if (deepgramService.isActive()) {
-        deepgramService.stop();
+    // Web Speech Subscription
+    const unsubscribeWebSpeech = webSpeechService.onCaption((caption) => {
+      if (engine !== 'beta') return; // Ignore if not active engine
+       if (caption.isFinal) {
+        setCaptions((prev) => [...prev, {
+          text: caption.text,
+          speaker: 'You (Beta)',
+          timestamp: Date.now()
+        }]);
+        setInterimCaption(null);
+      } else {
+        setInterimCaption({ text: caption.text, speaker: 'You (Beta)' });
       }
+    });
+
+    return () => {
+      unsubscribeDeepgram();
+      unsubscribeWebSpeech();
+      if (deepgramService.isActive()) deepgramService.stop();
+      webSpeechService.stop(); // Ensure beta stops too
     };
-  }, []);
+  }, [engine]); // Re-bind if engine concept changes, though technically listeners are persistent
 
   // Auto-scroll to bottom when new captions arrive
   useEffect(() => {
@@ -77,22 +98,39 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
   }, [captions, interimCaption]); // Scroll on interim updates too
 
   const handleStartStop = async () => {
+    setError(null);
+
     if (isRecording) {
-      deepgramService.stop();
+      if (engine === 'pro') deepgramService.stop();
+      else webSpeechService.stop();
+      
       setIsRecording(false);
       setInterimCaption(null);
     } else {
       try {
-        setError(null);
-        await deepgramService.start(selectedDeviceId);
+        if (engine === 'pro') {
+          await deepgramService.start(selectedDeviceId);
+        } else {
+          // Web Speech uses default mic usually, API doesn't easily support device selection in all browsers
+          webSpeechService.start();
+        }
         setIsRecording(true);
       } catch (err) {
-        setError(
-          'Failed to start Deepgram transcription. Check API key and microphone.'
-        );
+        setError('Failed to start transcription. Check permissions.');
         console.error(err);
       }
     }
+  };
+
+  const handleEngineChange = (newEngine: TranscriptionEngine) => {
+    if (isRecording) {
+      // proper cleanup before switch
+      if (engine === 'pro') deepgramService.stop();
+      else webSpeechService.stop();
+      setIsRecording(false);
+      setInterimCaption(null);
+    }
+    setEngine(newEngine);
   };
 
 // Removed unused handlers
@@ -113,8 +151,28 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
 
       {/* Controls */}
       <div className="mb-4 space-y-3">
-        {/* Device Selector */}
-        {!isRecording && audioDevices.length > 0 && (
+        {/* Engine Selector */}
+        <div className="flex gap-2 rounded-lg bg-[#19232D] p-1">
+          <button
+            onClick={() => handleEngineChange('pro')}
+            className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors ${
+              engine === 'pro' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            Orbits AI Pro
+          </button>
+          <button
+            onClick={() => handleEngineChange('beta')}
+            className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors ${
+              engine === 'beta' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            Orbits AI Beta
+          </button>
+        </div>
+
+        {/* Device Selector (Only for Pro usually) */}
+        {!isRecording && engine === 'pro' && audioDevices.length > 0 && (
           <div className="space-y-1">
              <label className="text-xs text-gray-400">Microphone Source</label>
              <select
@@ -130,7 +188,7 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
                ))}
                
                {/* Explicit option for user confidence, though techincally we mix it automatically */}
-               {isScreenSharing && (
+               {isScreenSharing && engine === 'pro' && (
                  <option value="system-audio">
                    🖥️ System Audio (Shared Tab) + Mic
                  </option>
@@ -151,12 +209,12 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
           {isRecording ? (
             <>
               <MicOff size={18} />
-              Stop Deepgram
+              Stop Transcription
             </>
           ) : (
             <>
-              <Mic size={18} />
-              Start Deepgram (Nova-3)
+              {engine === 'pro' ? <Sparkles size={18} /> : <Mic size={18} />}
+              Start {engine === 'pro' ? 'Orbits AI Pro' : 'Orbits AI Beta'}
             </>
           )}
         </button>
@@ -172,9 +230,11 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
         {isRecording && (
           <div className="flex items-center gap-2 text-xs text-green-400">
             <div className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
-            {isScreenSharing || selectedDeviceId === 'system-audio' 
-              ? 'Listening (Mic + System Audio)...' 
-              : 'Listening using ' + (audioDevices.find(d => d.deviceId === selectedDeviceId)?.label || 'Microphone') + '...'
+            {engine === 'pro' 
+               ? (isScreenSharing || selectedDeviceId === 'system-audio' 
+                  ? 'Listening (Mic + System Audio)...' 
+                  : 'Listening using ' + (audioDevices.find(d => d.deviceId === selectedDeviceId)?.label || 'Microphone') + '...')
+               : 'Listening (Browser Native)...'
             }
           </div>
         )}
@@ -194,7 +254,9 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
                 className="rounded-md bg-[#19232D] p-3"
               >
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-blue-400">
+                  <span className={`text-xs font-semibold ${
+                    engine === 'pro' ? 'text-blue-400' : 'text-purple-400'
+                  }`}>
                     {caption.speaker}
                   </span>
                   <span className="text-xs text-gray-500">
@@ -211,9 +273,13 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
             
             {/* Interim (Streaming) Caption */}
             {interimCaption && (
-               <div className="rounded-md bg-[#19232D]/50 border border-dashed border-blue-500/30 p-3 animate-pulse">
+               <div className={`rounded-md bg-[#19232D]/50 border border-dashed p-3 animate-pulse ${
+                 engine === 'pro' ? 'border-blue-500/30' : 'border-purple-500/30'
+               }`}>
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-blue-300 italic">
+                  <span className={`text-xs font-semibold italic ${
+                    engine === 'pro' ? 'text-blue-300' : 'text-purple-300'
+                  }`}>
                     {interimCaption.speaker} (Speaking...)
                   </span>
                 </div>
@@ -226,7 +292,7 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
             <p className="text-center text-sm text-gray-500">
               {isRecording
                 ? 'Listening...'
-                : 'Click "Start Deepgram" to begin real-time transcription.'}
+                : 'Click "Start" to begin real-time transcription.'}
             </p>
           </div>
         )}
