@@ -57,20 +57,21 @@ export class DeepgramService {
 
       // 2. Open WebSocket
       // Updated with user-requested parameters: language detection, entities, sentiment, etc.
+      // DEBUG: Using minimal params to isolate 1006 error
       const queryParams = new URLSearchParams({
         model: 'nova-2',
         smart_format: 'true',
         interim_results: 'true',
-        diarize: 'true',
-        endpointing: '300',
-        // New features requested:
-        detect_language: 'true',
-        detect_entities: 'true',
-        sentiment: 'true',
-        punctuate: 'true',
-        paragraphs: 'true',
-        utterances: 'true', 
-        utt_split: '0.8'
+        // diarize: 'true',
+        // endpointing: '300',
+        // // New features requested:
+        // detect_language: 'true',
+        // detect_entities: 'true',
+        // sentiment: 'true',
+        // punctuate: 'true',
+        // paragraphs: 'true',
+        // utterances: 'true', 
+        // utt_split: '0.8'
       });
 
       const url = `wss://api.deepgram.com/v1/listen?${queryParams.toString()}`;
