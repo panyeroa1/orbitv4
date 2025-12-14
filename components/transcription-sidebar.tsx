@@ -128,6 +128,13 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
                    {device.label || `Microphone ${device.deviceId.slice(0, 5)}...`}
                  </option>
                ))}
+               
+               {/* Explicit option for user confidence, though techincally we mix it automatically */}
+               {isScreenSharing && (
+                 <option value="system-audio">
+                   🖥️ System Audio (Shared Tab) + Mic
+                 </option>
+               )}
              </select>
           </div>
         )}
@@ -165,7 +172,10 @@ export const TranscriptionSidebar = ({ onClose }: TranscriptionSidebarProps) => 
         {isRecording && (
           <div className="flex items-center gap-2 text-xs text-green-400">
             <div className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
-            {isScreenSharing ? 'Listening (Mic + System Audio)...' : 'Listening...'}
+            {isScreenSharing || selectedDeviceId === 'system-audio' 
+              ? 'Listening (Mic + System Audio)...' 
+              : 'Listening using ' + (audioDevices.find(d => d.deviceId === selectedDeviceId)?.label || 'Microphone') + '...'
+            }
           </div>
         )}
       </div>

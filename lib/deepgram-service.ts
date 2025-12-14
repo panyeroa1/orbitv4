@@ -4,7 +4,7 @@
 
 export interface DeepgramCaption {
   text: string;
-  speaker: number | string; // Changed to support speaker index
+  speaker: number | string;
   timestamp: number;
   isFinal: boolean;
 }
@@ -22,13 +22,15 @@ export class DeepgramService {
   private destination: MediaStreamAudioDestinationNode | null = null;
   private micSource: MediaStreamAudioSourceNode | null = null;
   private screenSource: MediaStreamAudioSourceNode | null = null;
+  
+  // Streams
   private micStream: MediaStream | null = null;
+  private screenStream: MediaStream | null = null; // Keep track of this
 
   constructor() {}
 
   async getAudioDevices(): Promise<MediaDeviceInfo[]> {
     try {
-      // Request permission first to get labels
       await navigator.mediaDevices.getUserMedia({ audio: true });
       const devices = await navigator.mediaDevices.enumerateDevices();
       return devices.filter(device => device.kind === 'audioinput');
@@ -42,14 +44,11 @@ export class DeepgramService {
     if (this.isConnected) return;
 
     try {
-      // 1. Get API Key
       const response = await fetch('/api/deepgram/token');
       const { key } = await response.json();
 
       if (!key) throw new Error('No Deepgram API key found');
 
-      // 2. Open WebSocket
-      // Added diarize=true and filler_words=false for cleaner output
       const url = `wss://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&interim_results=true&diarize=true&endpointing=300`;
       this.socket = new WebSocket(url, ['token', key]);
 
@@ -65,10 +64,7 @@ export class DeepgramService {
         const transcript = alt?.transcript;
         
         if (transcript && transcript.length > 0) {
-          // Attempt to get speaker from words if available (Diarization)
-          // Default to 0 if not found
           const speaker = alt.words?.[0]?.speaker ?? 0;
-          
           this.emit({
             text: transcript,
             speaker: `Speaker ${speaker}`, 
@@ -96,22 +92,26 @@ export class DeepgramService {
 
   private async startAudioProcessing(deviceId?: string) {
     try {
-      // Initialize Audio Context
       this.audioContext = new AudioContext();
       this.destination = this.audioContext.createMediaStreamDestination();
 
-      // Get Microphone Stream with specific device if selected
+      // If user specifically requested 'system-audio' (our custom ID for just tab audio), 
+      // we might skip mic, OR we just mix mic as usual.
+      // Usually users want Mic + System.
+      
       const constraints: MediaStreamConstraints = {
-        audio: deviceId ? { deviceId: { exact: deviceId } } : true
+        audio: deviceId && deviceId !== 'system-audio' ? { deviceId: { exact: deviceId } } : true
       };
 
       this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
       this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
-      
-      // Connect Mic to Destination
       this.micSource.connect(this.destination);
 
-      // Start Recording from the Mixed Destination Stream
+      // If Screen Stream was added BEFORE start (e.g. user shared screen then started transcription)
+      if (this.screenStream) {
+        this.addScreenShareAudio(this.screenStream);
+      }
+
       this.startRecording(this.destination.stream);
 
     } catch (error) {
@@ -119,10 +119,11 @@ export class DeepgramService {
     }
   }
 
-  // Method to add Screen Share Audio
   async addScreenShareAudio(stream: MediaStream) {
+    this.screenStream = stream; // Store it
+
     if (!this.audioContext || !this.destination) {
-      console.warn('Audio context not initialized. Waiting for start() to complete...');
+      console.log('Audio context not ready, stored stream for later mix.');
       return;
     }
 
@@ -130,14 +131,13 @@ export class DeepgramService {
     console.log('🖥️ Screen Share Stream Tracks:', stream.getTracks().map(t => `${t.kind} (enabled: ${t.enabled})`));
     
     if (audioTracks.length === 0) {
-      console.warn('⚠️ Screen share stream has NO audio tracks. Did you check "Share tab audio"?');
+      console.warn('⚠️ Screen share stream has NO audio tracks.');
       return;
     }
 
     try {
       console.log('monitor: Adding screen share audio track:', audioTracks[0].label);
       
-      // Prevent adding if already exists to avoid feedback loops or double audio
       if (this.screenSource) {
          this.screenSource.disconnect();
       }
@@ -152,6 +152,7 @@ export class DeepgramService {
   }
 
   removeScreenShareAudio() {
+    this.screenStream = null;
     if (this.screenSource) {
       console.log('🖥️ Removing screen share audio from mix');
       this.screenSource.disconnect();
@@ -205,6 +206,7 @@ export class DeepgramService {
     this.isConnected = false;
     this.mediaRecorder = null;
     this.socket = null;
+    this.screenStream = null;
   }
 
   onCaption(callback: CaptionCallback): () => void {
